@@ -1,0 +1,17 @@
+{
+  "functions": {
+    "api/feed.ts": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/:feed.rss",
+      "destination": "/api/feed?feed=:feed&format=rss"
+    },
+    {
+      "source": "/:feed.html",
+      "destination": "/api/feed?feed=:feed&format=html"
+    }
+  ]
+}

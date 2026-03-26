@@ -17,6 +17,18 @@ export const writeHtmlFeed = async (
 ): Promise<void> => {
   logger.info(`Creating HTML feed for ${feedName} 📄`);
 
+  await writeFile(
+    `./site/${feedName}.html`,
+    renderHtmlFeed(feedName, posts, maxArticles),
+    "utf8",
+  );
+};
+
+export const renderHtmlFeed = (
+  feedName: string,
+  posts: Post[],
+  maxArticles = 50,
+): string => {
   if (posts.length === 0) {
     throw new Error(`No posts found for ${feedName}`);
   }
@@ -30,7 +42,7 @@ export const writeHtmlFeed = async (
     .slice(0, maxArticles);
 
   // Generate minimal, semantic HTML
-  const htmlContent = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -97,8 +109,6 @@ ${sortedPosts
     </footer>
 </body>
 </html>`;
-
-  await writeFile(`./site/${feedName}.html`, htmlContent, "utf8");
 };
 
 /**

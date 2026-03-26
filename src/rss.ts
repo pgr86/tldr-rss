@@ -37,15 +37,16 @@ function buildFeed(posts: Post[]) {
   return feedItems;
 }
 
-export const writeRssFeed = async (
+export const renderRssFeed = (
   feedName: string,
   posts: Post[],
-): Promise<void> => {
-  logger.info(`Creating feed for ${feedName} 📚`);
-
+  siteUrl = "https://bullrich.dev/tldr-rss",
+): string => {
   if (posts.length === 0) {
     throw new Error(`No posts found for ${feedName}`);
   }
+
+  const normalizedSiteUrl = siteUrl.replace(/\/$/, "");
   const feedObject = {
     rss: [
       {
@@ -59,7 +60,7 @@ export const writeRssFeed = async (
           {
             "atom:link": {
               _attr: {
-                href: `https://bullrich.dev/tldr-rss/${feedName}.rss`,
+                href: `${normalizedSiteUrl}/${feedName}.rss`,
                 rel: "self",
                 type: "application/rss+xml",
               },
@@ -69,7 +70,7 @@ export const writeRssFeed = async (
             title: `TLDR ${feedName.toLocaleUpperCase()} Feed`,
           },
           {
-            link: "https://bullrich.dev/tldr-rss/",
+            link: `${normalizedSiteUrl}/`,
           },
           { description: "TLDR RSS Feed" },
           { language: "en-US" },
@@ -88,7 +89,16 @@ export const writeRssFeed = async (
     ],
   };
 
-  const feed = '<?xml version="1.0" encoding="UTF-8"?>' + xml(feedObject);
+  return '<?xml version="1.0" encoding="UTF-8"?>' + xml(feedObject);
+};
+
+export const writeRssFeed = async (
+  feedName: string,
+  posts: Post[],
+): Promise<void> => {
+  logger.info(`Creating feed for ${feedName} 📚`);
+
+  const feed = renderRssFeed(feedName, posts);
 
   await writeFile(`./site/${feedName}.rss`, feed, "utf8");
 };
