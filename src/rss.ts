@@ -18,6 +18,7 @@ function buildFeed(posts: Post[]) {
       return {
         item: [
           { title: post.title },
+          { link: post.link },
           {
             pubDate: new Date(post.date as string).toUTCString(),
           },
@@ -76,11 +77,9 @@ export const renderRssFeed = (
           { language: "en-US" },
           {
             image: [
-              {
-                url: "https://tldr.tech/tldrsquare.png",
-                title: "TLDR RSS Feed",
-                link: "https://tldr.tech",
-              },
+              { url: "https://tldr.tech/tldrsquare.png" },
+              { title: "TLDR RSS Feed" },
+              { link: "https://tldr.tech" },
             ],
           },
           ...buildFeed(posts),
