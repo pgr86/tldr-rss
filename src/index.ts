@@ -4,7 +4,11 @@ import { FEEDS } from "./config";
 import { fetchFeedNews, NewsWithDate } from "./feed";
 import { writeHtmlFeed } from "./html";
 import { writeRssFeed } from "./rss";
+import { postFeedUpdates } from "./twitter";
 import { logger } from "./util";
+
+// Feeds whose new articles are shared on Twitter/X (no-op without credentials).
+const TWITTER_FEEDS = ["ai"];
 
 const fetchFeeds = async (): Promise<NewsWithDate[]> => {
   const allNews: NewsWithDate[] = [];
@@ -18,6 +22,11 @@ const fetchFeeds = async (): Promise<NewsWithDate[]> => {
     // Generate HTML page for tech feed only
     if (feedName === "tech") {
       await writeHtmlFeed(feedName, feedNews);
+    }
+
+    // Share newly seen articles of selected feeds on Twitter/X.
+    if (TWITTER_FEEDS.includes(feedName)) {
+      await postFeedUpdates(feedName, feedNews);
     }
   }
 

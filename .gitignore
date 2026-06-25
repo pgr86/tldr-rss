@@ -12,3 +12,6 @@
 .idea
 
 site/*.rss
+
+# Twitter posting state (persisted via CI cache, not committed)
+/.twitter-state
