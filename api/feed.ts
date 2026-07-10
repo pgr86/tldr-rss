@@ -54,10 +54,18 @@ export default async function handler(
     return;
   }
 
-  if (feed !== "feed" && !isSupportedFeed(feed)) {
+  const isDirect = feed.endsWith("_direct");
+  const baseFeed = isDirect ? feed.replace("_direct", "") : feed;
+
+  if (baseFeed !== "feed" && !isSupportedFeed(baseFeed)) {
     res.status(404).json({
       error: `Unsupported feed "${feed}"`,
-      supportedFeeds: [...FEEDS, "feed"],
+      supportedFeeds: [
+        ...FEEDS,
+        "feed",
+        ...FEEDS.map((f) => `${f}_direct`),
+        "feed_direct",
+      ],
     });
     return;
   }
@@ -71,7 +79,7 @@ export default async function handler(
   }
 
   const news =
-    feed === "feed" ? await fetchAllFeeds() : await fetchFeedNews(feed);
+    baseFeed === "feed" ? await fetchAllFeeds() : await fetchFeedNews(baseFeed);
 
   if (news.length === 0) {
     res.status(404).json({
@@ -87,10 +95,10 @@ export default async function handler(
 
   if (format === "html") {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.status(200).send(renderHtmlFeed(feed, news));
+    res.status(200).send(renderHtmlFeed(baseFeed, news));
     return;
   }
 
   res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
-  res.status(200).send(renderRssFeed(feed, news, getBaseUrl(req)));
+  res.status(200).send(renderRssFeed(feed, news, getBaseUrl(req), isDirect));
 }

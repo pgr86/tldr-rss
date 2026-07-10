@@ -87,7 +87,8 @@ export const fetchNews = async (url: string): Promise<News[]> => {
         continue;
       }
 
-      news.push({ title, link, content });
+      const image = await fetchArticleImage(link);
+      news.push({ title, link, content, image });
     }
 
     return news;
@@ -96,5 +97,68 @@ export const fetchNews = async (url: string): Promise<News[]> => {
       `Failed to fetch news from ${url}: ${error instanceof Error ? error.message : String(error)}`,
     );
     return [];
+  }
+};
+
+const IMAGE_META_SELECTORS = [
+  'meta[property="og:image"]',
+  'meta[property="og:image:secure_url"]',
+  'meta[name="twitter:image"]',
+  'meta[name="twitter:image:src"]',
+  'meta[itemprop="image"]',
+  'link[rel="image_src"]',
+];
+
+const fetchArticleImage = async (url: string): Promise<string | undefined> => {
+  try {
+    const response = await axios.get(url, {
+      timeout: 8000,
+      maxRedirects: 5,
+      responseType: "text",
+    });
+    const site = new JSDOM(response.data as string, { url });
+    const doc = site.window.document;
+
+    for (const selector of IMAGE_META_SELECTORS) {
+      const element = doc.querySelector(selector);
+      const value =
+        element?.getAttribute("content") || element?.getAttribute("href");
+
+      if (value) {
+        const normalizedValue = normalizeImageUrl(value, url);
+        if (normalizedValue) {
+          return normalizedValue;
+        }
+      }
+    }
+
+    const fallbackImage = doc.querySelector("article img, main img, img");
+    const fallbackSrc =
+      fallbackImage?.getAttribute("src") ||
+      fallbackImage?.getAttribute("data-src");
+
+    return fallbackSrc ? normalizeImageUrl(fallbackSrc, url) : undefined;
+  } catch (error) {
+    logger.debug(
+      `Failed to fetch article image from ${url}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return undefined;
+  }
+};
+
+const normalizeImageUrl = (
+  candidate: string,
+  pageUrl: string,
+): string | undefined => {
+  if (!candidate || candidate.startsWith("data:")) {
+    return undefined;
+  }
+
+  try {
+    return new URL(candidate, pageUrl).toString();
+  } catch {
+    return undefined;
   }
 };

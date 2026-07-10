@@ -1,3 +1,4 @@
+import axios from "axios";
 import Parser from "rss-parser";
 
 import { fetchNews, getRSSFeed } from "../news";
@@ -20,6 +21,10 @@ function createMockSetTimeout(): jest.SpyInstance {
 }
 
 describe("fetchNews", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it("should return empty array when URL returns 404", async () => {
     // Test with a URL that should return 404
     const result = await fetchNews("https://httpstat.us/404");
@@ -32,6 +37,35 @@ describe("fetchNews", () => {
       "https://invalid-url-that-does-not-exist.invalid",
     );
     expect(result).toEqual([]);
+  });
+
+  it("should fetch article images from original links", async () => {
+    jest.spyOn(axios, "get").mockImplementation(async (url) => {
+      if (url === "https://newsletter.example.com") {
+        return {
+          data: `<html><body><a href="https://article.example.com/post"><h3>Launch update</h3></a><div>Short summary</div></body></html>`,
+        };
+      }
+
+      if (url === "https://article.example.com/post") {
+        return {
+          data: `<html><head><meta property="og:image" content="/hero.jpg"></head></html>`,
+        };
+      }
+
+      throw new Error(`Unexpected URL ${String(url)}`);
+    });
+
+    const result = await fetchNews("https://newsletter.example.com");
+
+    expect(result).toEqual([
+      {
+        title: "Launch update",
+        link: "https://article.example.com/post",
+        content: "Short summary",
+        image: "https://article.example.com/hero.jpg",
+      },
+    ]);
   });
 });
 

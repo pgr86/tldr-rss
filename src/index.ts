@@ -14,6 +14,7 @@ const fetchFeeds = async (): Promise<NewsWithDate[]> => {
     allNews.push(...feedNews);
 
     await writeRssFeed(feedName, feedNews);
+    await writeRssFeed(`${feedName}_direct`, feedNews, true);
 
     // Generate HTML page for tech feed only
     if (feedName === "tech") {
@@ -24,6 +25,7 @@ const fetchFeeds = async (): Promise<NewsWithDate[]> => {
   logger.debug(`All news: ${JSON.stringify(allNews)}`);
 
   await writeRssFeed("feed", allNews);
+  await writeRssFeed("feed_direct", allNews, true);
   return allNews;
 };
 

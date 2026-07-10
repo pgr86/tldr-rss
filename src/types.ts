@@ -1,1 +1,6 @@
-export type News = { title: string; link: string; content: string };
+export type News = {
+  title: string;
+  link: string;
+  content: string;
+  image?: string;
+};
