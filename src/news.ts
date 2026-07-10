@@ -61,11 +61,17 @@ export const getRSSFeed = async (
   throw new Error("Unexpected end of retry loop");
 };
 
+const cleanHtmlForJsdom = (html: string): string => {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+};
+
 export const fetchNews = async (url: string): Promise<News[]> => {
   logger.info(`Downloading site from ${url}`);
   try {
     const siteFetch = await axios.get(url);
-    const site = new JSDOM(siteFetch.data as string);
+    const site = new JSDOM(cleanHtmlForJsdom(siteFetch.data as string));
     const doc = site.window.document;
 
     const news: News[] = [];
@@ -116,7 +122,7 @@ const fetchArticleImage = async (url: string): Promise<string | undefined> => {
       maxRedirects: 5,
       responseType: "text",
     });
-    const site = new JSDOM(response.data as string, { url });
+    const site = new JSDOM(cleanHtmlForJsdom(response.data as string), { url });
     const doc = site.window.document;
 
     for (const selector of IMAGE_META_SELECTORS) {
