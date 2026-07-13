@@ -5,6 +5,7 @@ import Parser from "rss-parser";
 
 import { News } from "./types";
 import { logger } from "./util";
+import { getCache, setCache } from "./cache";
 
 export const getRSSFeed = async (
   feed: string,
@@ -68,18 +69,23 @@ const cleanHtmlForJsdom = (html: string): string => {
 };
 
 export const fetchNews = async (url: string): Promise<News[]> => {
+  const cacheKey = `news:${url}`;
+  const cached = getCache<News[]>(cacheKey);
+  if (cached && cached.length > 0) {
+    return cached;
+  }
+
   logger.info(`Downloading site from ${url}`);
   try {
     const siteFetch = await axios.get(url);
     const site = new JSDOM(cleanHtmlForJsdom(siteFetch.data as string));
     const doc = site.window.document;
 
-    const news: News[] = [];
-
     // We get all the headers
     const headers = doc.querySelectorAll("h3");
     logger.info(`Found ${headers.length} headers. Parsing them`);
-    for (const header of headers.values()) {
+
+    const articlePromises = Array.from(headers.values()).map(async (header) => {
       const title = header.textContent;
       const link = header.parentElement?.getAttribute("href");
       const content =
@@ -90,13 +96,19 @@ export const fetchNews = async (url: string): Promise<News[]> => {
             content ?? "content"
           }`,
         );
-        continue;
+        return null;
       }
 
       const image = await fetchArticleImage(link);
-      news.push({ title, link, content, image });
-    }
+      return { title, link, content, image } as News;
+    });
 
+    const parsedArticles = await Promise.all(articlePromises);
+    const news = parsedArticles.filter((item): item is News => item !== null);
+
+    if (news.length > 0) {
+      setCache(cacheKey, news);
+    }
     return news;
   } catch (error) {
     logger.info(
@@ -116,6 +128,12 @@ const IMAGE_META_SELECTORS = [
 ];
 
 const fetchArticleImage = async (url: string): Promise<string | undefined> => {
+  const cacheKey = `image:${url}`;
+  const cachedObj = getCache<{ image: string | undefined }>(cacheKey);
+  if (cachedObj) {
+    return cachedObj.image;
+  }
+
   try {
     const response = await axios.get(url, {
       timeout: 8000,
@@ -125,6 +143,8 @@ const fetchArticleImage = async (url: string): Promise<string | undefined> => {
     const site = new JSDOM(cleanHtmlForJsdom(response.data as string), { url });
     const doc = site.window.document;
 
+    let image: string | undefined = undefined;
+
     for (const selector of IMAGE_META_SELECTORS) {
       const element = doc.querySelector(selector);
       const value =
@@ -133,23 +153,31 @@ const fetchArticleImage = async (url: string): Promise<string | undefined> => {
       if (value) {
         const normalizedValue = normalizeImageUrl(value, url);
         if (normalizedValue) {
-          return normalizedValue;
+          image = normalizedValue;
+          break;
         }
       }
     }
 
-    const fallbackImage = doc.querySelector("article img, main img, img");
-    const fallbackSrc =
-      fallbackImage?.getAttribute("src") ||
-      fallbackImage?.getAttribute("data-src");
+    if (!image) {
+      const fallbackImage = doc.querySelector("article img, main img, img");
+      const fallbackSrc =
+        fallbackImage?.getAttribute("src") ||
+        fallbackImage?.getAttribute("data-src");
+      if (fallbackSrc) {
+        image = normalizeImageUrl(fallbackSrc, url);
+      }
+    }
 
-    return fallbackSrc ? normalizeImageUrl(fallbackSrc, url) : undefined;
+    setCache(cacheKey, { image });
+    return image;
   } catch (error) {
     logger.debug(
       `Failed to fetch article image from ${url}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    setCache(cacheKey, { image: undefined });
     return undefined;
   }
 };
