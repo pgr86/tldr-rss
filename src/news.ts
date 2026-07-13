@@ -99,6 +99,17 @@ export const fetchNews = async (url: string): Promise<News[]> => {
         return null;
       }
 
+      // Filter out sponsored news
+      const titleLower = title.toLowerCase();
+      if (
+        titleLower.includes("(sponsor)") ||
+        titleLower.includes("(sponsoren)") ||
+        titleLower.includes("(sponsored)")
+      ) {
+        logger.debug(`Skipping sponsored article: ${title}`);
+        return null;
+      }
+
       const image = await fetchArticleImage(link);
       return { title, link, content, image } as News;
     });

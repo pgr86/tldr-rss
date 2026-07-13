@@ -2,6 +2,7 @@ import { FEEDS, isSupportedFeed } from "../src/config";
 import { fetchAllFeeds, fetchFeedNews } from "../src/feed";
 import { renderHtmlFeed } from "../src/html";
 import { renderRssFeed } from "../src/rss";
+import { markAsRead } from "../src/readStatus";
 
 const FOUR_HOURS_IN_SECONDS = 60 * 60 * 4;
 
@@ -9,6 +10,7 @@ type RequestLike = {
   headers: Record<string, string | string[] | undefined>;
   query?: Record<string, string | string[] | undefined>;
   url?: string;
+  method?: string;
 };
 
 type ResponseLike = {
@@ -41,7 +43,64 @@ export default async function handler(
   req: RequestLike,
   res: ResponseLike,
 ): Promise<void> {
+  // 1. Handle CORS preflight (OPTIONS method)
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.status(204).send("");
+    return;
+  }
+
   const url = new URL(req.url || "/", getBaseUrl(req));
+
+  // 2. Authentication Check
+  const queryPassword = getQueryParam(req.query?.password) || url.searchParams.get("password");
+  let isAuthenticated = queryPassword === "Test@123";
+
+  if (!isAuthenticated) {
+    const authHeaderRaw = req.headers["authorization"];
+    const authHeader = Array.isArray(authHeaderRaw) ? authHeaderRaw[0] : authHeaderRaw;
+    if (authHeader) {
+      const match = authHeader.match(/^Basic\s+(.*)$/i);
+      if (match) {
+        try {
+          const credentials = Buffer.from(match[1], "base64").toString("utf-8");
+          const parts = credentials.split(":");
+          const password = parts[1];
+          if (password === "Test@123") {
+            isAuthenticated = true;
+          }
+        } catch {
+          // Ignore base64 decoding errors
+        }
+      }
+    }
+  }
+
+  if (!isAuthenticated) {
+    res.setHeader("WWW-Authenticate", 'Basic realm="TLDR RSS Reader"');
+    res.status(401).send("Unauthorized");
+    return;
+  }
+
+  const pathname = url.pathname;
+
+  // 3. Mark As Read API Route
+  if (pathname === "/mark-read") {
+    const link = getQueryParam(req.query?.link) || url.searchParams.get("link");
+    if (!link) {
+      res.status(400).json({ error: "Missing link parameter" });
+      return;
+    }
+    markAsRead(link);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.status(200).json({ success: true });
+    return;
+  }
+
   const feed = getQueryParam(req.query?.feed) || url.searchParams.get("feed");
   const format =
     getQueryParam(req.query?.format) || url.searchParams.get("format") || "rss";
@@ -81,7 +140,17 @@ export default async function handler(
   const news =
     baseFeed === "feed" ? await fetchAllFeeds() : await fetchFeedNews(baseFeed);
 
-  if (news.length === 0) {
+  // 4. Safety net filtering of sponsored news (even if they were previously cached)
+  const filteredNews = news.filter((item) => {
+    const titleLower = item.title.toLowerCase();
+    return !(
+      titleLower.includes("(sponsor)") ||
+      titleLower.includes("(sponsoren)") ||
+      titleLower.includes("(sponsored)")
+    );
+  });
+
+  if (filteredNews.length === 0) {
     res.status(404).json({
       error: `No posts found for ${feed}`,
     });
@@ -95,10 +164,10 @@ export default async function handler(
 
   if (format === "html") {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.status(200).send(renderHtmlFeed(baseFeed, news));
+    res.status(200).send(renderHtmlFeed(baseFeed, filteredNews));
     return;
   }
 
   res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
-  res.status(200).send(renderRssFeed(feed, news, getBaseUrl(req), isDirect));
+  res.status(200).send(renderRssFeed(feed, filteredNews, getBaseUrl(req), isDirect));
 }

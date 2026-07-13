@@ -1,5 +1,6 @@
 import { writeFile } from "fs/promises";
 import { logger } from "./util";
+import { isRead } from "./readStatus";
 
 type Post = {
   title: string;
@@ -216,11 +217,21 @@ export const renderHtmlFeed = (
             margin-bottom: 0;
         }
 
+        /* Styling for already read articles (dimmed state) */
+        .feed-item.is-read {
+            opacity: 0.45;
+            filter: grayscale(40%);
+            border-color: rgba(255, 255, 255, 0.03);
+            background-color: rgba(17, 24, 39, 0.5);
+        }
+
         .feed-item:hover {
             transform: translateY(-1px);
             border-color: rgba(56, 189, 248, 0.4);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
             background-color: var(--card-hover);
+            opacity: 1; /* Restore opacity on hover for readability */
+            filter: none;
         }
 
         .feed-link {
@@ -317,8 +328,10 @@ export const renderHtmlFeed = (
     <main>
         ${sortedPosts
           .map(
-            (post) => `        <article class="feed-item">
-            <a href="${escapeHtmlAttr(post.link)}" target="_blank" class="feed-link" rel="noopener noreferrer">
+            (post) => {
+              const read = isRead(post.link);
+              return `        <article class="feed-item ${read ? "is-read" : ""}">
+            <a href="${escapeHtmlAttr(post.link)}" onclick="markAsRead('${escapeHtmlAttr(post.link)}', this)" target="_blank" class="feed-link" rel="noopener noreferrer">
                 <div class="feed-content-wrapper">
                     <div class="feed-text-block">
                         <h2 class="feed-item-title">${escapeHtml(post.title)}</h2>
@@ -336,13 +349,38 @@ export const renderHtmlFeed = (
                     }
                 </div>
             </a>
-        </article>`,
+        </article>`;
+            }
           )
           .join("\n")}
     </main>
     <footer>
         Stand: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE", { hour: '2-digit', minute: '2-digit' })}
     </footer>
+    <script>
+        function markAsRead(link, element) {
+            // Immediately mark it as read visually
+            const card = element.closest('.feed-item');
+            if (card) {
+                card.classList.add('is-read');
+            }
+            
+            // Extract the password query parameter from current URL to propagate if used
+            const urlParams = new URLSearchParams(window.location.search);
+            const password = urlParams.get('password');
+            
+            let targetUrl = '/mark-read?link=' + encodeURIComponent(link);
+            if (password) {
+                targetUrl += '&password=' + encodeURIComponent(password);
+            }
+            
+            // Post the read status back to the server
+            fetch(targetUrl, {
+                method: 'POST',
+                keepalive: true
+            }).catch(err => console.error('Failed to mark read status:', err));
+        }
+    </script>
 </body>
 </html>`;
 };

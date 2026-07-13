@@ -30,6 +30,7 @@ const server = http.createServer(async (req, res) => {
     headers: req.headers as Record<string, string | string[] | undefined>,
     query,
     url: req.url,
+    method: req.method,
   };
 
   // Construct a response-like object for the handler
