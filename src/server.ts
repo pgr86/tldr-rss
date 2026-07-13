@@ -1,6 +1,7 @@
 import http from "http";
 import url from "url";
 import handler from "../api/feed";
+import { fetchAllFeeds } from "./feed";
 
 const port = process.env.PORT || 3000;
 
@@ -64,3 +65,21 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
+
+// Background cache warming helper
+const warmCache = async () => {
+  try {
+    console.log("Starting background cache warming...");
+    await fetchAllFeeds();
+    console.log("Background cache warming completed successfully.");
+  } catch (error) {
+    console.error("Error warming cache in background:", error);
+  }
+};
+
+// Warm cache on startup
+warmCache();
+
+// Periodically warm cache every hour
+const ONE_HOUR = 60 * 60 * 1000;
+setInterval(warmCache, ONE_HOUR);
