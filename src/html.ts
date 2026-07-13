@@ -200,9 +200,6 @@ export const renderHtmlFeed = (
             flex: 1;
             overflow-y: auto;
             padding: 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
         }
 
         /* Feed item container cards */
@@ -211,7 +208,12 @@ export const renderHtmlFeed = (
             border: 1px solid var(--border-color);
             border-radius: 10px;
             overflow: hidden;
+            margin-bottom: 10px;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .feed-item:last-child {
+            margin-bottom: 0;
         }
 
         .feed-item:hover {
