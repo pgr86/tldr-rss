@@ -13,5 +13,6 @@ RUN yarn run build
 FROM node:18-slim
 
 COPY --from=Builder /action/dist /action
+COPY --from=Builder /action/docker-entrypoint.sh /action/docker-entrypoint.sh
 
-ENTRYPOINT ["node", "/action/index.js"]
+ENTRYPOINT ["/action/docker-entrypoint.sh"]

@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "scripts": {
     "start": "node dist",
-    "build": "ncc build --license LICENSE",
+    "build": "ncc build src/index.ts --license LICENSE && ncc build src/server.ts -o dist/server",
     "test": "jest",
     "vercel:dev": "vercel dev",
     "fix": "eslint --fix 'src/**/*'",
