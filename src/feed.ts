@@ -71,7 +71,9 @@ export const fetchFeedNews = async (
     // 2. Fall back to any cached data (even if expired)
     const fallback = getCache<NewsWithDate[]>(cacheKey);
     if (fallback && fallback.length > 0) {
-      logger.info(`Successfully fell back to expired cached news for ${feedName} (${fallback.length} articles)`);
+      logger.info(`Successfully fell back to expired cached news for ${feedName} (${fallback.length} articles). Marking cache as fresh.`);
+      // Touch/save cache to mark it as fresh for the next 15 minutes to prevent continuous network rate limiting
+      setCache(cacheKey, fallback);
       return fallback;
     }
     
