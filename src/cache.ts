@@ -24,6 +24,26 @@ export const getCache = <T>(key: string): T | null => {
   return null;
 };
 
+export const getCacheWithTtl = <T>(key: string, maxAgeMs: number): T | null => {
+  try {
+    const filePath = getCacheFilePath(key);
+    if (fs.existsSync(filePath)) {
+      const stats = fs.statSync(filePath);
+      const ageMs = Date.now() - stats.mtimeMs;
+      if (ageMs <= maxAgeMs) {
+        const content = fs.readFileSync(filePath, "utf-8");
+        logger.debug(`Cache hit for key: ${key} (age: ${Math.round(ageMs / 1000)}s)`);
+        return JSON.parse(content) as T;
+      } else {
+        logger.debug(`Cache expired for key: ${key} (age: ${Math.round(ageMs / 1000)}s, max: ${Math.round(maxAgeMs / 1000)}s)`);
+      }
+    }
+  } catch (err) {
+    logger.warn(`Failed to read cache for key ${key}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return null;
+};
+
 export const setCache = <T>(key: string, value: T): void => {
   try {
     if (!fs.existsSync(CACHE_DIR)) {

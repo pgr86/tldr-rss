@@ -137,8 +137,15 @@ export default async function handler(
     return;
   }
 
-  const news =
-    baseFeed === "feed" ? await fetchAllFeeds() : await fetchFeedNews(baseFeed);
+  let news;
+  try {
+    news = baseFeed === "feed" ? await fetchAllFeeds() : await fetchFeedNews(baseFeed);
+  } catch (error) {
+    res.status(500).json({
+      error: `Failed to load news for ${feed}: ${error instanceof Error ? error.message : String(error)}`,
+    });
+    return;
+  }
 
   // 4. Safety net filtering of sponsored news (even if they were previously cached)
   const filteredNews = news.filter((item) => {
