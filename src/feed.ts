@@ -88,6 +88,8 @@ export const fetchAllFeeds = async (): Promise<NewsWithDate[]> => {
     try {
       const feedNews = await fetchFeedNews(feedName);
       allNews.push(...feedNews);
+      // Add a 1-second delay between feed scrapes to prevent rate limiting
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     } catch (error) {
       logger.error(`Failed to fetch feed ${feedName} during fetchAllFeeds: ${error instanceof Error ? error.message : String(error)}`);
       // Continue fetching other feeds even if one completely fails

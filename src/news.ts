@@ -9,11 +9,11 @@ import { getCache, setCache } from "./cache";
 
 export const getRSSFeed = async (
   feed: string,
+  maxRetries = 1,
 ): Promise<Parser.Output<Record<string, unknown>>> => {
   const parser = new Parser();
   logger.info(`Fetching feed for ${feed}`);
 
-  const maxRetries = 6; // 6 retries + 1 initial attempt = 7 total attempts
   let attemptCount = 0;
 
   while (attemptCount <= maxRetries) {
@@ -23,7 +23,6 @@ export const getRSSFeed = async (
       attemptCount++;
 
       // Check if this is a 429 error
-      // Some libraries throw errors with a response object, others just with a message
       const errorWithResponse = error as {
         response?: { status?: number; headers?: Record<string, string> };
       };
@@ -32,7 +31,6 @@ export const getRSSFeed = async (
         (error instanceof Error && error.message.includes("Status code 429"));
 
       if (!is429Error || attemptCount > maxRetries) {
-        // If it's not a 429 error, or we've exhausted all retries, throw the error
         if (is429Error && attemptCount > maxRetries) {
           logger.warn(
             `Failed to fetch RSS feed for ${feed} after ${maxRetries + 1} attempts due to rate limiting`,
@@ -41,12 +39,12 @@ export const getRSSFeed = async (
         throw error;
       }
 
-      // Extract retry delay from Retry-After header or default to 30 seconds
+      // Extract retry delay from Retry-After header or default to 5 seconds
       const retryAfter = errorWithResponse.response?.headers?.["retry-after"];
       const delaySeconds =
         retryAfter && !isNaN(parseInt(retryAfter, 10))
           ? parseInt(retryAfter, 10)
-          : 30;
+          : 5;
       const delayMs = delaySeconds * 1000;
 
       logger.warn(
@@ -58,7 +56,6 @@ export const getRSSFeed = async (
     }
   }
 
-  // This should never be reached, but TypeScript needs this to understand the function always returns or throws
   throw new Error("Unexpected end of retry loop");
 };
 
