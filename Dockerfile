@@ -12,6 +12,8 @@ RUN yarn run build
 
 FROM node:18-slim
 
+WORKDIR /action
+
 COPY --from=Builder /action/dist /action
 COPY --from=Builder /action/docker-entrypoint.sh /action/docker-entrypoint.sh
 
