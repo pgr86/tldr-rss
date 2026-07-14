@@ -1,6 +1,7 @@
 import { writeFile } from "fs/promises";
 import { logger } from "./util";
 import { isRead } from "./readStatus";
+import { FEEDS } from "./config";
 
 type Post = {
   title: string;
@@ -79,6 +80,15 @@ export const renderHtmlFeed = (
 
   const formattedFeedName = feedName.charAt(0).toUpperCase() + feedName.slice(1);
 
+  // Generate tab HTML links
+  const tabsHtml = FEEDS.map(f => {
+    const active = f === feedName;
+    let displayName = f.charAt(0).toUpperCase() + f.slice(1);
+    if (f === "ai") displayName = "AI";
+    if (f === "devops") displayName = "DevOps";
+    return `<a href="/${f}.html" class="tab-btn ${active ? "active" : ""}">${displayName}</a>`;
+  }).join("\n                ");
+
   // Generate responsive, beautiful HTML optimized for Vivaldi sidebar and panels
   return `<!DOCTYPE html>
 <html lang="de">
@@ -141,14 +151,20 @@ export const renderHtmlFeed = (
 
         /* Header block styling */
         header {
-            background: rgba(17, 24, 39, 0.8);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            padding: 12px 16px;
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border-bottom: 1px solid var(--border-color);
             position: sticky;
             top: 0;
             z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 12px 16px 8px 16px;
+        }
+
+        .header-top {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -194,6 +210,51 @@ export const renderHtmlFeed = (
             border-radius: 4px;
             text-transform: uppercase;
             border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+
+        /* Feed tabs navigation */
+        .feed-tabs-container {
+            width: 100%;
+            overflow-x: auto;
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        .feed-tabs-container::-webkit-scrollbar {
+            display: none; /* Hide scrollbar for Chrome, Safari, Opera */
+        }
+
+        .feed-tabs {
+            display: flex;
+            gap: 6px;
+            padding-bottom: 4px;
+            width: max-content;
+        }
+
+        .tab-btn {
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            font-weight: 500;
+            padding: 5px 11px;
+            border-radius: 20px;
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background-color: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .tab-btn.active {
+            color: #0b0f19;
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            font-weight: 600;
+            box-shadow: 0 0 12px var(--accent-glow);
         }
 
         /* Main feed list area */
@@ -319,11 +380,18 @@ export const renderHtmlFeed = (
 </head>
 <body>
     <header>
-        <div class="header-title-container">
-            <h1>TLDR ${formattedFeedName}</h1>
-            <p>Aktuelle Artikel aus dem TLDR Feed</p>
+        <div class="header-top">
+            <div class="header-title-container">
+                <h1>TLDR ${formattedFeedName}</h1>
+                <p>Aktuelle Artikel aus dem TLDR Feed</p>
+            </div>
+            <span class="badge">${feedName}</span>
         </div>
-        <span class="badge">${feedName}</span>
+        <div class="feed-tabs-container">
+            <nav class="feed-tabs">
+                ${tabsHtml}
+            </nav>
+        </div>
     </header>
     <main>
         ${sortedPosts
@@ -358,6 +426,22 @@ export const renderHtmlFeed = (
         Stand: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE", { hour: '2-digit', minute: '2-digit' })}
     </footer>
     <script>
+        // Preserve query parameters (like password) across tab navigations
+        document.querySelectorAll('.tab-btn').forEach(tab => {
+            const url = new URL(tab.href, window.location.origin);
+            const currentParams = new URLSearchParams(window.location.search);
+            currentParams.forEach((value, key) => {
+                url.searchParams.set(key, value);
+            });
+            tab.href = url.pathname + url.search;
+        });
+
+        // Scroll the active tab into view horizontally
+        const activeTab = document.querySelector('.tab-btn.active');
+        if (activeTab) {
+            activeTab.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
+        }
+
         function markAsRead(link, element) {
             // Immediately mark it as read visually
             const card = element.closest('.feed-item');
