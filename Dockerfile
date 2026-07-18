@@ -15,6 +15,7 @@ FROM node:18-slim
 WORKDIR /action
 
 COPY --from=Builder /action/dist /action
+COPY --from=Builder /action/public /action/public
 COPY --from=Builder /action/docker-entrypoint.sh /action/docker-entrypoint.sh
 
 ENTRYPOINT ["/action/docker-entrypoint.sh"]

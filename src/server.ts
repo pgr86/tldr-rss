@@ -1,5 +1,7 @@
 import http from "http";
 import url from "url";
+import path from "path";
+import fs from "fs/promises";
 import handler from "../api/feed";
 import { fetchAllFeeds } from "./feed";
 
@@ -8,7 +10,38 @@ const port = process.env.PORT || 3000;
 const server = http.createServer(async (req, res) => {
   // Parse URL and query params
   const parsedUrl = url.parse(req.url || "", true);
-  const pathname = parsedUrl.pathname || "";
+  let pathname = parsedUrl.pathname || "";
+
+  // 1. Serve static files from public directory (useful in self-hosted Docker environments like Coolify)
+  if (pathname === "/") {
+    pathname = "/index.html";
+  }
+  const publicFilePath = path.join(process.cwd(), "public", pathname);
+  try {
+    const stat = await fs.stat(publicFilePath);
+    if (stat.isFile()) {
+      let contentType = "application/octet-stream";
+      if (pathname.endsWith(".html")) {
+        contentType = "text/html; charset=utf-8";
+      } else if (pathname.endsWith(".png")) {
+        contentType = "image/png";
+      } else if (pathname.endsWith(".ico")) {
+        contentType = "image/x-icon";
+      } else if (pathname.endsWith(".css")) {
+        contentType = "text/css; charset=utf-8";
+      }
+      
+      const fileData = await fs.readFile(publicFilePath);
+      res.writeHead(200, { "Content-Type": contentType });
+      res.end(fileData);
+      return;
+    }
+  } catch {
+    // File not found in public, continue to Vercel-like rewrites
+  }
+
+  // Restore path to original for rewrite matching
+  pathname = parsedUrl.pathname || "";
 
   // Implement Vercel-like rewrites
   const query = { ...parsedUrl.query } as Record<string, string | string[] | undefined>;
