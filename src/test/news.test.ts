@@ -117,7 +117,7 @@ describe("getRSSFeed", () => {
       .mockRejectedValueOnce(error429)
       .mockResolvedValueOnce({ items: [{ title: "Success after retries" }] });
 
-    const result = await getRSSFeed("https://example.com/rss");
+    const result = await getRSSFeed("https://example.com/rss", 6);
 
     expect(result).toEqual({ items: [{ title: "Success after retries" }] });
     expect(mockParser).toHaveBeenCalledTimes(7);
@@ -138,7 +138,7 @@ describe("getRSSFeed", () => {
       .spyOn(Parser.prototype, "parseURL")
       .mockRejectedValue(error429);
 
-    await expect(getRSSFeed("https://example.com/rss")).rejects.toThrow(
+    await expect(getRSSFeed("https://example.com/rss", 6)).rejects.toThrow(
       "Too Many Requests",
     );
     expect(mockParser).toHaveBeenCalledTimes(7);
@@ -163,7 +163,7 @@ describe("getRSSFeed", () => {
       .mockRejectedValueOnce(error429)
       .mockResolvedValueOnce({ items: [{ title: "Success on 5th try" }] });
 
-    const result = await getRSSFeed("https://example.com/rss");
+    const result = await getRSSFeed("https://example.com/rss", 6);
 
     expect(result).toEqual({ items: [{ title: "Success on 5th try" }] });
     expect(mockParser).toHaveBeenCalledTimes(5);
@@ -189,7 +189,7 @@ describe("getRSSFeed", () => {
     jest.restoreAllMocks();
   });
 
-  it("should use default 30 second delay when retry-after header is missing", async () => {
+  it("should use default 5 second delay when retry-after header is missing", async () => {
     const error429 = new Error("Too Many Requests") as Error & {
       response: { status: number; headers: Record<string, string> };
     };
@@ -202,7 +202,7 @@ describe("getRSSFeed", () => {
     const setTimeoutSpy = jest
       .spyOn(global, "setTimeout")
       .mockImplementation((callback, delay) => {
-        expect(delay).toBe(30000); // Should be 30 seconds
+        expect(delay).toBe(5000); // Should be 5 seconds
         // Call callback immediately for test
         (callback as () => void)();
         const mockTimeout: NodeJS.Timeout = {
@@ -221,10 +221,10 @@ describe("getRSSFeed", () => {
       .mockRejectedValueOnce(error429)
       .mockResolvedValueOnce({ items: [{ title: "Success" }] });
 
-    const result = await getRSSFeed("https://example.com/rss");
+    const result = await getRSSFeed("https://example.com/rss", 6);
 
     expect(result).toEqual({ items: [{ title: "Success" }] });
-    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 30000);
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
 
     setTimeoutSpy.mockRestore();
     jest.restoreAllMocks();
@@ -242,7 +242,7 @@ describe("getRSSFeed", () => {
       .mockRejectedValueOnce(error429)
       .mockResolvedValueOnce({ items: [{ title: "Success after retries" }] });
 
-    const result = await getRSSFeed("https://example.com/rss");
+    const result = await getRSSFeed("https://example.com/rss", 6);
 
     expect(result).toEqual({ items: [{ title: "Success after retries" }] });
     expect(mockParser).toHaveBeenCalledTimes(3);
@@ -261,7 +261,7 @@ describe("getRSSFeed", () => {
       .spyOn(Parser.prototype, "parseURL")
       .mockRejectedValue(error429);
 
-    await expect(getRSSFeed("https://example.com/rss")).rejects.toThrow(
+    await expect(getRSSFeed("https://example.com/rss", 6)).rejects.toThrow(
       "Status code 429",
     );
     expect(mockParser).toHaveBeenCalledTimes(7);

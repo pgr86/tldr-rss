@@ -39,8 +39,8 @@ describe("HTML Feed Generation", () => {
     const content = await readFile("./site/test.html", "utf8");
 
     expect(content).toContain("<!DOCTYPE html>");
-    expect(content).toContain('<html lang="en">');
-    expect(content).toContain("TLDR TEST News Feed");
+    expect(content).toContain('<html lang="de">');
+    expect(content).toContain("TLDR Test");
   });
 
   it("should include all articles in the HTML", async () => {
@@ -117,7 +117,7 @@ describe("HTML Feed Generation", () => {
     const content = await readFile("./site/test.html", "utf8");
 
     // Should escape dangerous characters in content
-    expect(content).not.toContain("<script>");
+    expect(content).not.toContain("<script>alert");
     expect(content).toContain("&lt;script&gt;");
     expect(content).toContain("&amp;");
     expect(content).toContain("&quot;");

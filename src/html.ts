@@ -97,6 +97,7 @@ export const renderHtmlFeed = (
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="TLDR ${formattedFeedName} Feed Reader">
     <title>TLDR ${formattedFeedName}</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -404,7 +405,7 @@ export const renderHtmlFeed = (
                     <div class="feed-text-block">
                         <h2 class="feed-item-title">${escapeHtml(post.title)}</h2>
                         <div class="feed-item-meta">
-                            <span>${escapeHtml(formatDate(post.date))}</span>
+                            <time datetime="${new Date(post.date).toISOString()}">${escapeHtml(formatDate(post.date))}</time>
                         </div>
                         <p class="feed-item-description">${escapeHtml(post.content)}</p>
                     </div>
