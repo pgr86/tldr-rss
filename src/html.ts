@@ -435,6 +435,19 @@ export const renderHtmlFeed = (
             font-size: 0.82rem;
             color: var(--text-secondary);
             line-height: 1.45;
+            display: -webkit-box;
+            -webkit-line-clamp: 4; /* Truncate description at 4 lines for panel display */
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+
+        .feed-item-description.is-expanded {
+            display: block;
+            -webkit-line-clamp: none;
+            overflow: visible;
+            text-overflow: clip;
         }
 
         /* Thumbnail preview styling */
@@ -712,11 +725,40 @@ export const renderHtmlFeed = (
             });
         }
 
-        // Run gesture initialization when DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initSwipeGestures);
-        } else {
+        // Initialize click to toggle description expansion
+        function initDescriptionToggle() {
+            const descriptions = document.querySelectorAll('.feed-item-description');
+            descriptions.forEach(desc => {
+                desc.addEventListener('click', (e) => {
+                    // Prevent opening the link when clicking the description text
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const card = desc.closest('.feed-item');
+                    const linkElement = card.querySelector('.feed-link');
+                    const link = linkElement.getAttribute('href');
+                    
+                    // Toggle the expanded class
+                    const isExpanded = desc.classList.toggle('is-expanded');
+                    
+                    // Immediately mark as read when expanding
+                    if (isExpanded) {
+                        markAsRead(link, linkElement);
+                    }
+                });
+            });
+        }
+
+        // Run gesture and toggle initialization when DOM is ready
+        function initAll() {
             initSwipeGestures();
+            initDescriptionToggle();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initAll);
+        } else {
+            initAll();
         }
     </script>
 </body>
