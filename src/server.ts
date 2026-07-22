@@ -1,7 +1,8 @@
-import http from "http";
-import url from "url";
-import path from "path";
 import fs from "fs/promises";
+import http from "http";
+import path from "path";
+import url from "url";
+
 import handler from "../api/feed";
 import { fetchAllFeeds } from "./feed";
 
@@ -30,7 +31,7 @@ const server = http.createServer(async (req, res) => {
       } else if (pathname.endsWith(".css")) {
         contentType = "text/css; charset=utf-8";
       }
-      
+
       const fileData = await fs.readFile(publicFilePath);
       res.writeHead(200, { "Content-Type": contentType });
       res.end(fileData);
@@ -44,8 +45,11 @@ const server = http.createServer(async (req, res) => {
   pathname = parsedUrl.pathname || "";
 
   // Implement Vercel-like rewrites
-  const query = { ...parsedUrl.query } as Record<string, string | string[] | undefined>;
-  
+  const query = { ...parsedUrl.query } as Record<
+    string,
+    string | string[] | undefined
+  >;
+
   const rssMatch = pathname.match(/^\/([^/]+)\.rss$/);
   if (rssMatch) {
     query.feed = rssMatch[1];
@@ -57,7 +61,7 @@ const server = http.createServer(async (req, res) => {
     query.feed = htmlMatch[1];
     query.format = "html";
   }
-  
+
   // Construct a request-like object for the handler
   const requestLike = {
     headers: req.headers as Record<string, string | string[] | undefined>,
@@ -81,7 +85,7 @@ const server = http.createServer(async (req, res) => {
     json(body: unknown) {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(body));
-    }
+    },
   };
 
   try {

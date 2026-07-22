@@ -1,7 +1,8 @@
 import { writeFile } from "fs/promises";
-import { logger } from "./util";
-import { isRead } from "./readStatus";
+
 import { FEEDS } from "./config";
+import { isRead } from "./readStatus";
+import { logger } from "./util";
 
 type Post = {
   title: string;
@@ -21,7 +22,7 @@ export const writeHtmlFeed = async (
   feedName: string,
   posts: Post[],
   maxArticles = 50,
- ): Promise<void> => {
+): Promise<void> => {
   logger.info(`Creating HTML feed for ${feedName} 📄`);
 
   await writeFile(
@@ -35,14 +36,18 @@ const formatDate = (dateStr: string): string => {
   try {
     const date = new Date(dateStr);
     const now = new Date();
-    
+
     // Clear hours to compare calendar days
-    const cleanDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const cleanDate = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+    );
     const cleanNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     const diffTime = cleanNow.getTime() - cleanDate.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays === 0) {
       return "Today";
     } else if (diffDays === 1) {
@@ -50,11 +55,11 @@ const formatDate = (dateStr: string): string => {
     } else if (diffDays < 7) {
       return `${diffDays} days ago`;
     }
-    
-    return date.toLocaleDateString("de-DE", { 
-      year: "numeric", 
-      month: "short", 
-      day: "numeric" 
+
+    return date.toLocaleDateString("de-DE", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   } catch {
     return dateStr;
@@ -78,10 +83,11 @@ export const renderHtmlFeed = (
     )
     .slice(0, maxArticles);
 
-  const formattedFeedName = feedName.charAt(0).toUpperCase() + feedName.slice(1);
+  const formattedFeedName =
+    feedName.charAt(0).toUpperCase() + feedName.slice(1);
 
   // Generate tab HTML links
-  const tabsHtml = FEEDS.map(f => {
+  const tabsHtml = FEEDS.map((f) => {
     const active = f === feedName;
     let displayName = f.charAt(0).toUpperCase() + f.slice(1);
     if (f === "ai") displayName = "AI";
@@ -213,6 +219,38 @@ export const renderHtmlFeed = (
             border: 1px solid rgba(56, 189, 248, 0.2);
         }
 
+        /* Header actions container */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-action-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            border-radius: 6px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .header-action-btn:hover {
+            color: var(--accent-color);
+            background: var(--accent-glow);
+            border-color: rgba(56, 189, 248, 0.3);
+            transform: scale(1.05);
+        }
+
+        .header-action-btn:active {
+            transform: scale(0.95);
+        }
+
         /* Feed tabs navigation */
         .feed-tabs-container {
             width: 100%;
@@ -267,20 +305,65 @@ export const renderHtmlFeed = (
 
         /* Feed item container cards */
         .feed-item {
+            position: relative;
             background-color: var(--card-bg);
             border: 1px solid var(--border-color);
             border-radius: 10px;
             overflow: hidden;
             margin-bottom: 10px;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
 
         .feed-item:last-child {
             margin-bottom: 0;
         }
 
+        /* Swipe background states */
+        .feed-item.swiping-right {
+            background: linear-gradient(to right, #059669 0%, var(--card-bg) 60%);
+        }
+        .feed-item.swiping-left {
+            background: linear-gradient(to left, #2563eb 0%, var(--card-bg) 60%);
+        }
+
+        /* Pseudo-elements for swipe icons/text */
+        .feed-item::before {
+            content: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 6 7 17l-5-5'/><path d='m22 10-7.5 7.5L13 16'/></svg>");
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .feed-item::after {
+            content: "● Ungelesen";
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #ffffff;
+            font-size: 0.8rem;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .feed-item.swiping-right::before {
+            opacity: 1;
+        }
+
+        .feed-item.swiping-left::after {
+            opacity: 1;
+        }
+
         /* Styling for already read articles (dimmed state) */
-        .feed-item.is-read {
+        .feed-item.is-read:not(.swiping-left):not(.swiping-right) {
             opacity: 0.45;
             filter: grayscale(40%);
             border-color: rgba(255, 255, 255, 0.03);
@@ -291,9 +374,12 @@ export const renderHtmlFeed = (
             transform: translateY(-1px);
             border-color: rgba(56, 189, 248, 0.4);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-            background-color: var(--card-hover);
             opacity: 1; /* Restore opacity on hover for readability */
             filter: none;
+        }
+
+        .feed-item:hover .feed-link {
+            background-color: var(--card-hover);
         }
 
         .feed-link {
@@ -301,6 +387,15 @@ export const renderHtmlFeed = (
             color: inherit;
             display: block;
             padding: 12px;
+            position: relative;
+            z-index: 2;
+            background-color: var(--card-bg);
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s;
+        }
+
+        .feed-item.swiping-left .feed-link,
+        .feed-item.swiping-right .feed-link {
+            background-color: var(--card-bg) !important;
         }
 
         .feed-content-wrapper {
@@ -340,11 +435,6 @@ export const renderHtmlFeed = (
             font-size: 0.82rem;
             color: var(--text-secondary);
             line-height: 1.45;
-            display: -webkit-box;
-            -webkit-line-clamp: 4; /* Truncate description at 4 lines for panel display */
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
         /* Thumbnail preview styling */
@@ -386,7 +476,14 @@ export const renderHtmlFeed = (
                 <h1>TLDR ${formattedFeedName}</h1>
                 <p>Aktuelle Artikel aus dem TLDR Feed</p>
             </div>
-            <span class="badge">${feedName}</span>
+            <div class="header-actions">
+                <button id="mark-all-read-btn" class="header-action-btn" title="Alle als gelesen markieren" onclick="markAllAsReadCurrentFeed()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6 7 17l-5-5"/>
+                        <path d="m22 10-7.5 7.5L13 16"/>
+                    </svg>
+                </button>
+            </div>
         </div>
         <div class="feed-tabs-container">
             <nav class="feed-tabs">
@@ -396,10 +493,9 @@ export const renderHtmlFeed = (
     </header>
     <main>
         ${sortedPosts
-          .map(
-            (post) => {
-              const read = isRead(post.link);
-              return `        <article class="feed-item ${read ? "is-read" : ""}">
+          .map((post) => {
+            const read = isRead(post.link);
+            return `        <article class="feed-item ${read ? "is-read" : ""}">
             <a href="${escapeHtmlAttr(post.link)}" onclick="markAsRead('${escapeHtmlAttr(post.link)}', this)" target="_blank" class="feed-link" rel="noopener noreferrer">
                 <div class="feed-content-wrapper">
                     <div class="feed-text-block">
@@ -419,12 +515,11 @@ export const renderHtmlFeed = (
                 </div>
             </a>
         </article>`;
-            }
-          )
+          })
           .join("\n")}
     </main>
     <footer>
-        Stand: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE", { hour: '2-digit', minute: '2-digit' })}
+        Stand: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
     </footer>
     <script>
         // Preserve query parameters (like password) across tab navigations
@@ -464,6 +559,164 @@ export const renderHtmlFeed = (
                 method: 'POST',
                 keepalive: true
             }).catch(err => console.error('Failed to mark read status:', err));
+        }
+
+        function markAllAsReadCurrentFeed() {
+            const feedItems = document.querySelectorAll('.feed-item:not(.is-read)');
+            if (feedItems.length === 0) return;
+
+            const links = [];
+            feedItems.forEach(item => {
+                item.classList.add('is-read');
+                const linkElement = item.querySelector('.feed-link');
+                if (linkElement) {
+                    const href = linkElement.getAttribute('href');
+                    if (href) {
+                        links.push(href);
+                    }
+                }
+            });
+
+            if (links.length === 0) return;
+
+            // Extract the password query parameter from current URL to propagate if used
+            const urlParams = new URLSearchParams(window.location.search);
+            const password = urlParams.get('password');
+            
+            let targetUrl = '/mark-all-read?links=' + encodeURIComponent(links.join(','));
+            if (password) {
+                targetUrl += '&password=' + encodeURIComponent(password);
+            }
+            
+            fetch(targetUrl, {
+                method: 'POST',
+                keepalive: true
+            }).catch(err => console.error('Failed to mark all as read:', err));
+        }
+
+        function markAsReadFromSwipe(item) {
+            if (item.classList.contains('is-read')) return;
+            const linkElement = item.querySelector('.feed-link');
+            if (linkElement) {
+                const link = linkElement.getAttribute('href');
+                if (link) {
+                    markAsRead(link, linkElement);
+                }
+            }
+        }
+
+        function markAsUnreadFromSwipe(item) {
+            if (!item.classList.contains('is-read')) return;
+            const linkElement = item.querySelector('.feed-link');
+            if (linkElement) {
+                const link = linkElement.getAttribute('href');
+                if (link) {
+                    item.classList.remove('is-read');
+                    
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const password = urlParams.get('password');
+                    
+                    let targetUrl = '/mark-unread?link=' + encodeURIComponent(link);
+                    if (password) {
+                        targetUrl += '&password=' + encodeURIComponent(password);
+                    }
+                    
+                    fetch(targetUrl, {
+                        method: 'POST',
+                        keepalive: true
+                    }).catch(err => console.error('Failed to mark unread status:', err));
+                }
+            }
+        }
+
+        // Initialize touch swipe on all feed items
+        function initSwipeGestures() {
+            const feedItems = document.querySelectorAll('.feed-item');
+            
+            feedItems.forEach(item => {
+                const link = item.querySelector('.feed-link');
+                if (!link) return;
+                
+                let startX = 0;
+                let startY = 0;
+                let currentX = 0;
+                let isSwiping = false;
+                let swipeDirection = null;
+                const threshold = 80;
+                
+                item.addEventListener('touchstart', (e) => {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                    isSwiping = false;
+                    swipeDirection = null;
+                    
+                    link.style.transition = 'none';
+                }, { passive: true });
+                
+                item.addEventListener('touchmove', (e) => {
+                    const touchX = e.touches[0].clientX;
+                    const touchY = e.touches[0].clientY;
+                    
+                    const diffX = touchX - startX;
+                    const diffY = touchY - startY;
+                    
+                    if (!isSwiping) {
+                        if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY)) {
+                            isSwiping = true;
+                        }
+                    }
+                    
+                    if (isSwiping) {
+                        e.preventDefault();
+                        currentX = diffX;
+                        
+                        const maxSwipe = 120;
+                        let constrainedX = diffX;
+                        if (diffX > maxSwipe) constrainedX = maxSwipe;
+                        if (diffX < -maxSwipe) constrainedX = -maxSwipe;
+                        
+                        link.style.transform = 'translateX(' + constrainedX + 'px)';
+                        
+                        if (constrainedX > 0) {
+                            if (swipeDirection !== 'right') {
+                                item.classList.remove('swiping-left');
+                                item.classList.add('swiping-right');
+                                swipeDirection = 'right';
+                            }
+                        } else if (constrainedX < 0) {
+                            if (swipeDirection !== 'left') {
+                                item.classList.remove('swiping-right');
+                                item.classList.add('swiping-left');
+                                swipeDirection = 'left';
+                            }
+                        }
+                    }
+                }, { passive: false });
+                
+                item.addEventListener('touchend', () => {
+                    if (isSwiping) {
+                        link.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
+                        link.style.transform = 'translateX(0px)';
+                        
+                        if (currentX > threshold) {
+                            markAsReadFromSwipe(item);
+                        } else if (currentX < -threshold) {
+                            markAsUnreadFromSwipe(item);
+                        }
+                    }
+                    
+                    setTimeout(() => {
+                        item.classList.remove('swiping-left', 'swiping-right');
+                    }, 200);
+                }, { passive: true });
+            });
+        }
+
+        // Run gesture initialization when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initSwipeGestures);
+        } else {
+            initSwipeGestures();
         }
     </script>
 </body>

@@ -3,9 +3,9 @@ import axios from "axios";
 import { JSDOM } from "jsdom";
 import Parser from "rss-parser";
 
+import { getCache, setCache } from "./cache";
 import { News } from "./types";
 import { logger } from "./util";
-import { getCache, setCache } from "./cache";
 
 export const getRSSFeed = async (
   feed: string,
@@ -59,11 +59,10 @@ export const getRSSFeed = async (
   throw new Error("Unexpected end of retry loop");
 };
 
-const cleanHtmlForJsdom = (html: string): string => {
-  return html
+const cleanHtmlForJsdom = (html: string): string =>
+  html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
-};
 
 export const fetchNews = async (url: string): Promise<News[]> => {
   const cacheKey = `news:${url}`;

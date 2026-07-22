@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
 
 const CACHE_DIR = "./.cache";
@@ -54,6 +54,30 @@ export const markAsRead = (url: string): void => {
   ensureLoaded();
   if (!readUrls.has(url)) {
     readUrls.add(url);
+    saveReadStatus();
+  }
+};
+
+// Mark a URL as unread
+export const markAsUnread = (url: string): void => {
+  ensureLoaded();
+  if (readUrls.has(url)) {
+    readUrls.delete(url);
+    saveReadStatus();
+  }
+};
+
+// Mark multiple URLs as read
+export const markAllAsRead = (urls: string[]): void => {
+  ensureLoaded();
+  let changed = false;
+  for (const url of urls) {
+    if (!readUrls.has(url)) {
+      readUrls.add(url);
+      changed = true;
+    }
+  }
+  if (changed) {
     saveReadStatus();
   }
 };

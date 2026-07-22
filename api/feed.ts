@@ -2,7 +2,7 @@ import { FEEDS, isSupportedFeed } from "../src/config";
 import { fetchAllFeeds, fetchFeedNews } from "../src/feed";
 import { renderHtmlFeed } from "../src/html";
 import { renderRssFeed } from "../src/rss";
-import { markAsRead } from "../src/readStatus";
+import { markAsRead, markAsUnread, markAllAsRead } from "../src/readStatus";
 
 const FOUR_HOURS_IN_SECONDS = 60 * 60 * 4;
 
@@ -94,6 +94,37 @@ export default async function handler(
       return;
     }
     markAsRead(link);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.status(200).json({ success: true });
+    return;
+  }
+
+  // Mark As Unread API Route
+  if (pathname === "/mark-unread") {
+    const link = getQueryParam(req.query?.link) || url.searchParams.get("link");
+    if (!link) {
+      res.status(400).json({ error: "Missing link parameter" });
+      return;
+    }
+    markAsUnread(link);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.status(200).json({ success: true });
+    return;
+  }
+
+  // Mark All As Read API Route
+  if (pathname === "/mark-all-read") {
+    const linksParam = getQueryParam(req.query?.links) || url.searchParams.get("links");
+    if (!linksParam) {
+      res.status(400).json({ error: "Missing links parameter" });
+      return;
+    }
+    const links = linksParam.split(",");
+    markAllAsRead(links);
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
