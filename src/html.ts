@@ -755,16 +755,9 @@ export const renderHtmlFeed = (
                     if (!card) return;
                     
                     const desc = card.querySelector('.feed-item-description');
-                    const linkElement = card.querySelector('.feed-link');
-                    const link = linkElement ? linkElement.getAttribute('href') : null;
-                    
                     const isExpanded = desc ? desc.classList.toggle('is-expanded') : false;
                     
                     linkBtn.textContent = isExpanded ? 'weniger' : 'mehr';
-                    
-                    if (isExpanded && link && linkElement) {
-                        markAsRead(link, linkElement);
-                    }
                 };
 
                 linkBtn.addEventListener('click', handleToggle);
