@@ -148,6 +148,15 @@ describe("HTML Feed Generation", () => {
     );
   });
 
+  it("should include 'mehr' link element and initMoreToggle handler", async () => {
+    await writeHtmlFeed("test", testPosts);
+
+    const content = await readFile("./site/test.html", "utf8");
+
+    expect(content).toContain('<span class="more-link" role="button" tabindex="0">mehr</span>');
+    expect(content).toContain("initMoreToggle()");
+  });
+
   it("should throw error if no posts are provided", async () => {
     await expect(writeHtmlFeed("test", [])).rejects.toThrow(
       "No posts found for test",

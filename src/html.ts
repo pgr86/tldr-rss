@@ -450,6 +450,23 @@ export const renderHtmlFeed = (
             text-overflow: clip;
         }
 
+        .more-link {
+            display: inline-block;
+            margin-top: 6px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--accent-color);
+            cursor: pointer;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+            transition: color 0.15s ease, opacity 0.15s ease;
+        }
+
+        .more-link:hover {
+            color: #7dd3fc;
+            opacity: 0.9;
+        }
+
         /* Thumbnail preview styling */
         .feed-thumbnail-container {
             width: 60px;
@@ -517,6 +534,7 @@ export const renderHtmlFeed = (
                             <time datetime="${new Date(post.date).toISOString()}">${escapeHtml(formatDate(post.date))}</time>
                         </div>
                         <p class="feed-item-description">${escapeHtml(post.content)}</p>
+                        <span class="more-link" role="button" tabindex="0">mehr</span>
                     </div>
                     ${
                       post.image
@@ -725,25 +743,34 @@ export const renderHtmlFeed = (
             });
         }
 
-        // Initialize click to toggle description expansion
-        function initDescriptionToggle() {
-            const descriptions = document.querySelectorAll('.feed-item-description');
-            descriptions.forEach(desc => {
-                desc.addEventListener('click', (e) => {
-                    // Prevent opening the link when clicking the description text
+        // Initialize click to toggle description expansion via "mehr" link
+        function initMoreToggle() {
+            const moreLinks = document.querySelectorAll('.more-link');
+            moreLinks.forEach(linkBtn => {
+                const handleToggle = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     
-                    const card = desc.closest('.feed-item');
+                    const card = linkBtn.closest('.feed-item');
+                    if (!card) return;
+                    
+                    const desc = card.querySelector('.feed-item-description');
                     const linkElement = card.querySelector('.feed-link');
-                    const link = linkElement.getAttribute('href');
+                    const link = linkElement ? linkElement.getAttribute('href') : null;
                     
-                    // Toggle the expanded class
-                    const isExpanded = desc.classList.toggle('is-expanded');
+                    const isExpanded = desc ? desc.classList.toggle('is-expanded') : false;
                     
-                    // Immediately mark as read when expanding
-                    if (isExpanded) {
+                    linkBtn.textContent = isExpanded ? 'weniger' : 'mehr';
+                    
+                    if (isExpanded && link && linkElement) {
                         markAsRead(link, linkElement);
+                    }
+                };
+
+                linkBtn.addEventListener('click', handleToggle);
+                linkBtn.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        handleToggle(e);
                     }
                 });
             });
@@ -752,7 +779,7 @@ export const renderHtmlFeed = (
         // Run gesture and toggle initialization when DOM is ready
         function initAll() {
             initSwipeGestures();
-            initDescriptionToggle();
+            initMoreToggle();
         }
 
         if (document.readyState === 'loading') {
