@@ -450,9 +450,15 @@ export const renderHtmlFeed = (
             text-overflow: clip;
         }
 
-        .more-link {
-            display: inline-block;
+        .more-link-container {
+            display: flex;
+            justify-content: flex-end;
             margin-top: 6px;
+        }
+
+        .more-link {
+            display: inline-flex;
+            align-items: center;
             font-size: 0.78rem;
             font-weight: 600;
             color: var(--accent-color);
@@ -534,7 +540,6 @@ export const renderHtmlFeed = (
                             <time datetime="${new Date(post.date).toISOString()}">${escapeHtml(formatDate(post.date))}</time>
                         </div>
                         <p class="feed-item-description">${escapeHtml(post.content)}</p>
-                        <span class="more-link" role="button" tabindex="0">mehr</span>
                     </div>
                     ${
                       post.image
@@ -543,6 +548,9 @@ export const renderHtmlFeed = (
                     </div>`
                         : ""
                     }
+                </div>
+                <div class="more-link-container">
+                    <span class="more-link" role="button" tabindex="0">mehr</span>
                 </div>
             </a>
         </article>`;
