@@ -153,8 +153,22 @@ describe("HTML Feed Generation", () => {
 
     const content = await readFile("./site/test.html", "utf8");
 
-    expect(content).toContain('<span class="more-link" role="button" tabindex="0">mehr</span>');
+    expect(content).toContain(
+      '<span class="more-link" role="button" tabindex="0">mehr</span>',
+    );
     expect(content).toContain("initMoreToggle()");
+  });
+
+  it("should include mouse drag scrolling for tabs and mouse swipe gestures for feed items", async () => {
+    await writeHtmlFeed("test", testPosts);
+
+    const content = await readFile("./site/test.html", "utf8");
+
+    expect(content).toContain("initTabScrolling()");
+    expect(content).toContain("container.addEventListener('mousedown'");
+    expect(content).toContain("item.addEventListener('mousedown'");
+    expect(content).toContain("window.addEventListener('mousemove'");
+    expect(content).toContain("window.addEventListener('mouseup'");
   });
 
   it("should throw error if no posts are provided", async () => {

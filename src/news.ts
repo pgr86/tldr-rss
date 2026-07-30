@@ -66,7 +66,7 @@ const cleanHtmlForJsdom = (html: string): string =>
 
 export const fetchNews = async (url: string): Promise<News[]> => {
   if (url.includes("leadershipintech.com")) {
-    return fetchLeadershipNews(url);
+    return await fetchLeadershipNews(url);
   }
 
   const cacheKey = `news:${url}`;
@@ -139,7 +139,9 @@ export const fetchLeadershipNews = async (url: string): Promise<News[]> => {
   logger.info(`Downloading Leadership in Tech site from ${url}`);
   try {
     const siteFetch = await axios.get(url);
-    const site = new JSDOM(cleanHtmlForJsdom(siteFetch.data as string), { url });
+    const site = new JSDOM(cleanHtmlForJsdom(siteFetch.data as string), {
+      url,
+    });
     const doc = site.window.document;
 
     const campaign = doc.querySelector(".campaign");
@@ -148,7 +150,7 @@ export const fetchLeadershipNews = async (url: string): Promise<News[]> => {
       return [];
     }
 
-    const articles: Array<{ title: string; link: string; content: string }> = [];
+    const articles: { title: string; link: string; content: string }[] = [];
 
     // Parse main article paragraphs inside .campaign
     const paragraphs = Array.from(campaign.querySelectorAll("p"));

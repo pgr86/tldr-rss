@@ -257,6 +257,12 @@ export const renderHtmlFeed = (
             overflow-x: auto;
             -ms-overflow-style: none;  /* IE and Edge */
             scrollbar-width: none;  /* Firefox */
+            cursor: grab;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .feed-tabs-container.is-dragging {
+            cursor: grabbing;
         }
         .feed-tabs-container::-webkit-scrollbar {
             display: none; /* Hide scrollbar for Chrome, Safari, Opera */
@@ -280,6 +286,8 @@ export const renderHtmlFeed = (
             border: 1px solid var(--border-color);
             transition: all 0.2s ease;
             white-space: nowrap;
+            user-select: none;
+            -webkit-user-drag: none;
         }
 
         .tab-btn:hover {
@@ -312,6 +320,8 @@ export const renderHtmlFeed = (
             overflow: hidden;
             margin-bottom: 10px;
             transition: border-color 0.2s, box-shadow 0.2s;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         .feed-item:last-child {
@@ -391,6 +401,9 @@ export const renderHtmlFeed = (
             z-index: 2;
             background-color: var(--card-bg);
             transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-user-drag: none;
         }
 
         .feed-item.swiping-left .feed-link,
@@ -489,6 +502,8 @@ export const renderHtmlFeed = (
             height: 100%;
             object-fit: cover;
             transition: transform 0.3s ease;
+            -webkit-user-drag: none;
+            pointer-events: none;
         }
 
         .feed-item:hover .feed-thumbnail {
@@ -668,7 +683,61 @@ export const renderHtmlFeed = (
             }
         }
 
-        // Initialize touch swipe on all feed items
+        // Initialize mouse drag scrolling for tab bar
+        function initTabScrolling() {
+            const container = document.querySelector('.feed-tabs-container');
+            if (!container) return;
+
+            let isDown = false;
+            let startX = 0;
+            let scrollLeft = 0;
+            let isDragging = false;
+
+            container.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                isDown = true;
+                isDragging = false;
+                container.classList.add('is-dragging');
+                startX = e.pageX - container.offsetLeft;
+                scrollLeft = container.scrollLeft;
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (!isDown) return;
+                isDown = false;
+                container.classList.remove('is-dragging');
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isDown) return;
+                const x = e.pageX - container.offsetLeft;
+                const walk = (x - startX);
+                if (Math.abs(walk) > 5) {
+                    isDragging = true;
+                }
+                container.scrollLeft = scrollLeft - walk;
+            });
+
+            const tabLinks = container.querySelectorAll('.tab-btn');
+            tabLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    if (isDragging) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        isDragging = false;
+                    }
+                });
+            });
+
+            container.addEventListener('wheel', (e) => {
+                if (e.deltaY !== 0) {
+                    e.preventDefault();
+                    container.scrollLeft += e.deltaY;
+                }
+            }, { passive: false });
+        }
+
+        // Initialize touch and mouse swipe gestures on all feed items
         function initSwipeGestures() {
             const feedItems = document.querySelectorAll('.feed-item');
             
@@ -682,12 +751,24 @@ export const renderHtmlFeed = (
                 let isSwiping = false;
                 let swipeDirection = null;
                 const threshold = 80;
+                let preventClick = false;
+
+                item.addEventListener('dragstart', (e) => e.preventDefault());
+
+                link.addEventListener('click', (e) => {
+                    if (preventClick) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        preventClick = false;
+                    }
+                }, true);
                 
                 item.addEventListener('touchstart', (e) => {
                     startX = e.touches[0].clientX;
                     startY = e.touches[0].clientY;
                     isSwiping = false;
                     swipeDirection = null;
+                    currentX = 0;
                     
                     link.style.transition = 'none';
                 }, { passive: true });
@@ -748,6 +829,83 @@ export const renderHtmlFeed = (
                         item.classList.remove('swiping-left', 'swiping-right');
                     }, 200);
                 }, { passive: true });
+
+                // Mouse Events
+                let isMouseDown = false;
+
+                item.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return;
+                    if (e.target.closest('.more-link')) return;
+
+                    isMouseDown = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    isSwiping = false;
+                    swipeDirection = null;
+                    currentX = 0;
+
+                    link.style.transition = 'none';
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (!isMouseDown) return;
+
+                    const diffX = e.clientX - startX;
+                    const diffY = e.clientY - startY;
+
+                    if (!isSwiping) {
+                        if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY)) {
+                            isSwiping = true;
+                            preventClick = true;
+                        }
+                    }
+
+                    if (isSwiping) {
+                        e.preventDefault();
+                        currentX = diffX;
+
+                        const maxSwipe = 120;
+                        let constrainedX = diffX;
+                        if (diffX > maxSwipe) constrainedX = maxSwipe;
+                        if (diffX < -maxSwipe) constrainedX = -maxSwipe;
+
+                        link.style.transform = 'translateX(' + constrainedX + 'px)';
+
+                        if (constrainedX > 0) {
+                            if (swipeDirection !== 'right') {
+                                item.classList.remove('swiping-left');
+                                item.classList.add('swiping-right');
+                                swipeDirection = 'right';
+                            }
+                        } else if (constrainedX < 0) {
+                            if (swipeDirection !== 'left') {
+                                item.classList.remove('swiping-right');
+                                item.classList.add('swiping-left');
+                                swipeDirection = 'left';
+                            }
+                        }
+                    }
+                });
+
+                window.addEventListener('mouseup', () => {
+                    if (!isMouseDown) return;
+                    isMouseDown = false;
+
+                    if (isSwiping) {
+                        link.style.transition = 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
+                        link.style.transform = 'translateX(0px)';
+
+                        if (currentX > threshold) {
+                            markAsReadFromSwipe(item);
+                        } else if (currentX < -threshold) {
+                            markAsUnreadFromSwipe(item);
+                        }
+                    }
+
+                    setTimeout(() => {
+                        item.classList.remove('swiping-left', 'swiping-right');
+                    }, 200);
+                });
             });
         }
 
@@ -779,6 +937,7 @@ export const renderHtmlFeed = (
 
         // Run gesture and toggle initialization when DOM is ready
         function initAll() {
+            initTabScrolling();
             initSwipeGestures();
             initMoreToggle();
         }
