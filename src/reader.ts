@@ -1,3 +1,4 @@
+import { Readability } from "@mozilla/readability";
 import axios from "axios";
 import { JSDOM } from "jsdom";
 
@@ -18,7 +19,7 @@ const cleanHtmlForJsdom = (html: string): string =>
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
 
-const REMOVE_SELECTORS = [
+const REMOVE_BEFORE_PARSING = [
   "script",
   "style",
   "iframe",
@@ -34,14 +35,22 @@ const REMOVE_SELECTORS = [
   ".ads",
   ".advertisement",
   ".cookie",
+  ".cookie-banner",
   ".banner",
   ".newsletter",
+  ".newsletter-signup",
+  ".newsletter-box",
+  ".subscribe",
   ".signup",
   ".social-share",
-  ".share",
+  ".share-buttons",
   ".comments",
-  ".related",
+  ".related-posts",
   ".sidebar",
+  "[class*='newsletter']",
+  "[class*='subscribe']",
+  "[id*='newsletter']",
+  "[id*='subscribe']",
   "[role='banner']",
   "[role='navigation']",
   "[role='complementary']",
@@ -76,24 +85,7 @@ export const fetchReaderArticle = async (
     const dom = new JSDOM(cleanHtmlForJsdom(rawHtml), { url: targetUrl });
     const doc = dom.window.document;
 
-    // 1. Title Extraction
-    const ogTitle = doc
-      .querySelector('meta[property="og:title"]')
-      ?.getAttribute("content");
-    const twitterTitle = doc
-      .querySelector('meta[name="twitter:title"]')
-      ?.getAttribute("content");
-    const h1Title = doc.querySelector("h1")?.textContent?.trim();
-    const docTitle = doc.title?.trim();
-
-    const title =
-      ogTitle?.trim() ||
-      twitterTitle?.trim() ||
-      h1Title ||
-      docTitle ||
-      "Artikel";
-
-    // 2. Lead Image Extraction
+    // 1. Meta Lead Image Extraction
     const ogImage = doc
       .querySelector('meta[property="og:image"]')
       ?.getAttribute("content");
@@ -111,7 +103,7 @@ export const fetchReaderArticle = async (
       }
     }
 
-    // 3. Date Extraction
+    // 2. Date Extraction
     const pubDateMeta =
       doc
         .querySelector('meta[property="article:published_time"]')
@@ -136,48 +128,30 @@ export const fetchReaderArticle = async (
       }
     }
 
-    // 4. Main Content Extraction
-    const candidateSelectors = [
-      "article",
-      "main",
-      "[role='main']",
-      ".post-content",
-      ".article-content",
-      ".entry-content",
-      ".story-body",
-      ".article-body",
-      "#content",
-      "#main",
-    ];
-
-    let contentContainer: Element | null = null;
-    let maxParagraphs = 0;
-
-    for (const selector of candidateSelectors) {
-      const el = doc.querySelector(selector);
-      if (el) {
-        const pCount = el.querySelectorAll("p").length;
-        if (pCount > maxParagraphs) {
-          maxParagraphs = pCount;
-          contentContainer = el;
-        }
+    // Pre-clean noisy elements before feeding to Readability
+    REMOVE_BEFORE_PARSING.forEach((sel) => {
+      try {
+        doc.querySelectorAll(sel).forEach((el) => el.remove());
+      } catch {
+        // Ignore invalid selectors
       }
-    }
-
-    if (!contentContainer) {
-      contentContainer = doc.body;
-    }
-
-    // Clone content element for manipulation
-    const containerClone = contentContainer.cloneNode(true) as Element;
-
-    // Remove unwanted noise elements
-    REMOVE_SELECTORS.forEach((sel) => {
-      containerClone.querySelectorAll(sel).forEach((el) => el.remove());
     });
 
-    // Resolve links and images to absolute URLs
-    containerClone.querySelectorAll("a").forEach((a) => {
+    // 3. Parse with Mozilla Readability (Firefox Reader Mode Engine)
+    const reader = new Readability(doc);
+    const parsedArticle = reader.parse();
+
+    const title =
+      parsedArticle?.title?.trim() || doc.title?.trim() || "Artikel";
+
+    const rawContentHtml = parsedArticle?.content || "";
+
+    // Parse the clean content HTML with JSDOM for post-processing & deduplication
+    const contentDom = new JSDOM(rawContentHtml, { url: targetUrl });
+    const contentDoc = contentDom.window.document;
+
+    // A. Resolve relative links and images to absolute URLs
+    contentDoc.querySelectorAll("a").forEach((a) => {
       const href = a.getAttribute("href");
       if (href) {
         try {
@@ -185,12 +159,12 @@ export const fetchReaderArticle = async (
           a.setAttribute("target", "_blank");
           a.setAttribute("rel", "noopener noreferrer");
         } catch {
-          // Keep original href if invalid
+          // Keep original
         }
       }
     });
 
-    containerClone.querySelectorAll("img").forEach((img) => {
+    contentDoc.querySelectorAll("img").forEach((img) => {
       const src =
         img.getAttribute("src") ||
         img.getAttribute("data-src") ||
@@ -203,40 +177,63 @@ export const fetchReaderArticle = async (
           img.removeAttribute("data-src");
           img.setAttribute("loading", "lazy");
         } catch {
-          // Ignore invalid image src
+          img.remove();
         }
       } else {
         img.remove();
       }
     });
 
-    // Remove elements that are empty or have no text/media
-    const cleanNodes = (element: Element) => {
-      const children = Array.from(element.children);
-      for (const child of children) {
-        cleanNodes(child);
-        const text = child.textContent?.trim() || "";
-        const hasMedia = child.querySelector("img, video, iframe, code, pre");
-        if (
-          !text &&
-          !hasMedia &&
-          ["div", "p", "span", "section"].includes(child.tagName.toLowerCase())
+    // B. Deduplicate Lead Image:
+    // If the first image in content is identical to leadImage (or if leadImage isn't set, make first image leadImage and remove from body)
+    const imagesInContent = Array.from(contentDoc.querySelectorAll("img"));
+    if (imagesInContent.length > 0) {
+      const firstImgSrc = imagesInContent[0].getAttribute("src");
+      if (firstImgSrc) {
+        if (!leadImage) {
+          leadImage = firstImgSrc;
+          imagesInContent[0].remove();
+        } else if (
+          leadImage === firstImgSrc ||
+          leadImage.includes(firstImgSrc) ||
+          firstImgSrc.includes(leadImage)
         ) {
-          child.remove();
+          // Remove duplicate lead image from body content
+          imagesInContent[0].remove();
         }
       }
-    };
-    cleanNodes(containerClone);
+    }
 
-    const contentHtml = containerClone.innerHTML.trim();
-    const textLength = containerClone.textContent?.trim().length || 0;
+    // C. Remove duplicate H1 title at start of content
+    const firstH1 = contentDoc.querySelector("h1");
+    if (firstH1) {
+      const h1Text = firstH1.textContent?.trim().toLowerCase() || "";
+      const articleTitleText = title.toLowerCase();
+      if (h1Text === articleTitleText || articleTitleText.includes(h1Text)) {
+        firstH1.remove();
+      }
+    }
 
-    // Calculate reading time (approx 200 words per minute)
-    const wordCount = (containerClone.textContent || "").split(/\s+/).length;
+    // D. Filter out leftover newsletter promo / subscribe paragraphs
+    contentDoc.querySelectorAll("p, div, blockquote").forEach((el) => {
+      const text = el.textContent?.trim().toLowerCase() || "";
+      if (
+        (text.includes("subscribe to") ||
+          text.includes("newsletter") ||
+          text.includes("abonnieren sie") ||
+          text.includes("get the latest news in your inbox") ||
+          text.includes("sign up for our")) &&
+        text.length < 150
+      ) {
+        el.remove();
+      }
+    });
+
+    const contentHtml = contentDoc.body.innerHTML.trim();
+    const wordCount = (contentDoc.body.textContent || "").split(/\s+/).length;
     const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
 
-    if (textLength < 100) {
-      // Fallback if extraction yielded almost nothing
+    if (!contentHtml || (contentDoc.body.textContent?.trim().length || 0) < 50) {
       return {
         title,
         domain,
@@ -274,9 +271,7 @@ export const fetchReaderArticle = async (
   }
 };
 
-export const renderReaderHtml = (
-  article: ArticleData,
-): string => `<!DOCTYPE html>
+export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -441,7 +436,7 @@ export const renderReaderHtml = (
             border: 1px solid var(--border-color);
         }
 
-        /* Article Body Styling - Slightly larger font for Reader Mode */
+        /* Article Body Styling - Larger font for Reader Mode */
         .article-body {
             font-size: 1.12rem;
             line-height: 1.75;
