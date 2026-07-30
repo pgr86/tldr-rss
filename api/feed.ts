@@ -45,6 +45,9 @@ export default async function handler(
   req: RequestLike,
   res: ResponseLike,
 ): Promise<void> {
+  // Always set X-Robots-Tag to prevent search engine indexing
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet");
+
   // 1. Handle CORS preflight (OPTIONS method)
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -55,6 +58,14 @@ export default async function handler(
   }
 
   const url = new URL(req.url || "/", getBaseUrl(req));
+  const pathname = url.pathname;
+
+  // Serve robots.txt without authentication
+  if (pathname === "/robots.txt") {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.status(200).send("User-agent: *\nDisallow: /reader\nDisallow: /article\nDisallow: /\n");
+    return;
+  }
 
   // 2. Authentication Check
   const queryPassword = getQueryParam(req.query?.password) || url.searchParams.get("password");
@@ -85,8 +96,6 @@ export default async function handler(
     res.status(401).send("Unauthorized");
     return;
   }
-
-  const pathname = url.pathname;
 
   // 3. Reader Mode API Route
   if (pathname === "/reader" || pathname === "/article") {

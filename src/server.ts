@@ -9,6 +9,9 @@ import { fetchAllFeeds } from "./feed";
 const port = process.env.PORT || 3000;
 
 const server = http.createServer(async (req, res) => {
+  // Always set X-Robots-Tag to prevent search engine indexing
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet");
+
   // Parse URL and query params
   const parsedUrl = url.parse(req.url || "", true);
   let pathname = parsedUrl.pathname || "";
@@ -30,6 +33,8 @@ const server = http.createServer(async (req, res) => {
         contentType = "image/x-icon";
       } else if (pathname.endsWith(".css")) {
         contentType = "text/css; charset=utf-8";
+      } else if (pathname.endsWith(".txt")) {
+        contentType = "text/plain; charset=utf-8";
       }
 
       const fileData = await fs.readFile(publicFilePath);

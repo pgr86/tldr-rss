@@ -101,6 +101,8 @@ export const renderHtmlFeed = (
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+    <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet">
     <meta name="description" content="${feedName === "leadership" ? "Leadership in Tech Feed Reader" : `TLDR ${formattedFeedName} Feed Reader`}">
     <title>${feedName === "leadership" ? "Leadership in Tech" : `TLDR ${formattedFeedName}`}</title>
     <link rel="icon" type="image/png" href="/favicon.png">

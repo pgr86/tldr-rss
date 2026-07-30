@@ -1,0 +1,7 @@
+User-agent: *
+Disallow: /reader
+Disallow: /article
+Disallow: /mark-read
+Disallow: /mark-unread
+Disallow: /mark-all-read
+Disallow: /
