@@ -31,7 +31,10 @@ export const fetchFeedNews = async (
   );
 
   try {
-    const feed = `${RSS_BASE_URL}/${feedName}`;
+    const feed =
+      feedName === "leadership"
+        ? "https://leadershipintech.com/newsletters.rss"
+        : `${RSS_BASE_URL}/${feedName}`;
     const rssNews = await getRSSFeed(feed);
 
     const recentItems = rssNews.items.filter((item) => {

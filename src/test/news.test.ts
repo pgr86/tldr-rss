@@ -29,7 +29,7 @@ describe("fetchNews", () => {
     // Test with a URL that should return 404
     const result = await fetchNews("https://httpstat.us/404");
     expect(result).toEqual([]);
-  });
+  }, 15000);
 
   it("should return empty array when URL is invalid", async () => {
     // Test with an invalid URL
@@ -64,6 +64,42 @@ describe("fetchNews", () => {
         link: "https://article.example.com/post",
         content: "Short summary",
         image: "https://article.example.com/hero.jpg",
+      },
+    ]);
+  });
+
+  it("should fetch leadership in tech newsletter articles", async () => {
+    jest.spyOn(axios, "get").mockImplementation(async (url) => {
+      if (url === "https://leadershipintech.com/newsletters/2331-the-37-rule") {
+        return {
+          data: `<html><body><div class="campaign">
+            <p><a href="https://example.com/37-rule">The 37% rule</a><br><em>2 minutes</em> by Author</p>
+            <p>Summary of the 37% rule</p>
+            <p><a href="https://example.com/sponsored">Sponsored Topic</a><br><em>sponsored by Test</em></p>
+            <p>Sponsored description</p>
+          </div></body></html>`,
+        };
+      }
+
+      if (url === "https://example.com/37-rule") {
+        return {
+          data: `<html><head><meta property="og:image" content="https://example.com/image.jpg"></head></html>`,
+        };
+      }
+
+      throw new Error(`Unexpected URL ${String(url)}`);
+    });
+
+    const result = await fetchNews(
+      "https://leadershipintech.com/newsletters/2331-the-37-rule",
+    );
+
+    expect(result).toEqual([
+      {
+        title: "The 37% rule",
+        link: "https://example.com/37-rule",
+        content: "Summary of the 37% rule",
+        image: "https://example.com/image.jpg",
       },
     ]);
   });

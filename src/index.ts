@@ -16,8 +16,8 @@ const fetchFeeds = async (): Promise<NewsWithDate[]> => {
     await writeRssFeed(feedName, feedNews);
     await writeRssFeed(`${feedName}_direct`, feedNews, true);
 
-    // Generate HTML page for tech feed only
-    if (feedName === "tech") {
+    // Generate HTML page for tech and leadership feed
+    if (feedName === "tech" || feedName === "leadership") {
       await writeHtmlFeed(feedName, feedNews);
     }
   }

@@ -12,3 +12,4 @@
 .idea
 
 site/*.rss
+.cache/

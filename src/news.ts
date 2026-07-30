@@ -65,6 +65,10 @@ const cleanHtmlForJsdom = (html: string): string =>
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
 
 export const fetchNews = async (url: string): Promise<News[]> => {
+  if (url.includes("leadershipintech.com")) {
+    return fetchLeadershipNews(url);
+  }
+
   const cacheKey = `news:${url}`;
   const cached = getCache<News[]>(cacheKey);
   if (cached && cached.length > 0) {
@@ -120,6 +124,116 @@ export const fetchNews = async (url: string): Promise<News[]> => {
   } catch (error) {
     logger.info(
       `Failed to fetch news from ${url}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return [];
+  }
+};
+
+export const fetchLeadershipNews = async (url: string): Promise<News[]> => {
+  const cacheKey = `news:${url}`;
+  const cached = getCache<News[]>(cacheKey);
+  if (cached && cached.length > 0) {
+    return cached;
+  }
+
+  logger.info(`Downloading Leadership in Tech site from ${url}`);
+  try {
+    const siteFetch = await axios.get(url);
+    const site = new JSDOM(cleanHtmlForJsdom(siteFetch.data as string), { url });
+    const doc = site.window.document;
+
+    const campaign = doc.querySelector(".campaign");
+    if (!campaign) {
+      logger.info(`No .campaign container found in ${url}`);
+      return [];
+    }
+
+    const articles: Array<{ title: string; link: string; content: string }> = [];
+
+    // Parse main article paragraphs inside .campaign
+    const paragraphs = Array.from(campaign.querySelectorAll("p"));
+    for (let i = 0; i < paragraphs.length; i++) {
+      const p = paragraphs[i];
+      const anchor = p.querySelector("a");
+      if (!anchor) continue;
+
+      const rawTitle = anchor.textContent?.trim();
+      const rawHref = anchor.getAttribute("href");
+      if (!rawTitle || !rawHref) continue;
+
+      // Filter sponsored articles
+      const fullPText = p.textContent?.toLowerCase() || "";
+      if (
+        fullPText.includes("sponsored by") ||
+        rawTitle.toLowerCase().includes("(sponsor)") ||
+        rawTitle.toLowerCase().includes("(sponsored)")
+      ) {
+        logger.debug(`Skipping sponsored leadership article: ${rawTitle}`);
+        continue;
+      }
+
+      // Check next paragraph for summary content
+      let content = "";
+      const nextElem = p.nextElementSibling;
+      if (
+        nextElem &&
+        nextElem.tagName.toLowerCase() === "p" &&
+        !nextElem.querySelector("a")
+      ) {
+        content = nextElem.textContent?.trim() || "";
+      }
+
+      const absoluteLink = normalizeImageUrl(rawHref, url) || rawHref;
+      articles.push({
+        title: rawTitle,
+        link: absoluteLink,
+        content: content || rawTitle,
+      });
+    }
+
+    // Also parse list items in campaign if present (sections like industry/security)
+    const listAnchors = Array.from(campaign.querySelectorAll("ul li a"));
+    for (const anchor of listAnchors) {
+      const rawTitle = anchor.textContent?.trim();
+      const rawHref = anchor.getAttribute("href");
+      if (!rawTitle || !rawHref) continue;
+
+      const titleLower = rawTitle.toLowerCase();
+      if (
+        titleLower.includes("(sponsor)") ||
+        titleLower.includes("(sponsored)")
+      ) {
+        continue;
+      }
+
+      const absoluteLink = normalizeImageUrl(rawHref, url) || rawHref;
+      if (articles.some((item) => item.link === absoluteLink)) {
+        continue;
+      }
+
+      articles.push({
+        title: rawTitle,
+        link: absoluteLink,
+        content: rawTitle,
+      });
+    }
+
+    const articlePromises = articles.map(async (art) => {
+      const image = await fetchArticleImage(art.link);
+      return { ...art, image } as News;
+    });
+
+    const news = await Promise.all(articlePromises);
+
+    if (news.length > 0) {
+      setCache(cacheKey, news);
+    }
+    return news;
+  } catch (error) {
+    logger.info(
+      `Failed to fetch leadership news from ${url}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
     return [];
   }

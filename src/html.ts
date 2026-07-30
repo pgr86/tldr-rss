@@ -101,8 +101,8 @@ export const renderHtmlFeed = (
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="TLDR ${formattedFeedName} Feed Reader">
-    <title>TLDR ${formattedFeedName}</title>
+    <meta name="description" content="${feedName === "leadership" ? "Leadership in Tech Feed Reader" : `TLDR ${formattedFeedName} Feed Reader`}">
+    <title>${feedName === "leadership" ? "Leadership in Tech" : `TLDR ${formattedFeedName}`}</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -509,8 +509,8 @@ export const renderHtmlFeed = (
     <header>
         <div class="header-top">
             <div class="header-title-container">
-                <h1>TLDR ${formattedFeedName}</h1>
-                <p>Aktuelle Artikel aus dem TLDR Feed</p>
+                <h1>${feedName === "leadership" ? "Leadership in Tech" : `TLDR ${formattedFeedName}`}</h1>
+                <p>Aktuelle Artikel aus dem ${feedName === "leadership" ? "Leadership in Tech" : "TLDR"} Feed</p>
             </div>
             <div class="header-actions">
                 <button id="mark-all-read-btn" class="header-action-btn" title="Alle als gelesen markieren" onclick="markAllAsReadCurrentFeed()">

@@ -11,6 +11,7 @@ export const FEEDS = [
   "marketing",
   "data",
   "fintech",
+  "leadership",
 ] as const;
 
 export type FeedName = (typeof FEEDS)[number];

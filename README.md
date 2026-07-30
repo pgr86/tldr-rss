@@ -40,6 +40,7 @@ This repository is set up to run on Vercel using dynamic serverless generation.
 - `/marketing.rss`
 - `/data.rss`
 - `/fintech.rss`
+- `/leadership.rss`
 - `/tech.html` and the same pattern for the individual feeds above
 
 ### Deploy steps
