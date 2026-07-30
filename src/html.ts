@@ -546,8 +546,9 @@ export const renderHtmlFeed = (
         ${sortedPosts
           .map((post) => {
             const read = isRead(post.link);
+            const readerHref = `/reader?url=${encodeURIComponent(post.link)}`;
             return `        <article class="feed-item ${read ? "is-read" : ""}">
-            <a href="${escapeHtmlAttr(post.link)}" onclick="markAsRead('${escapeHtmlAttr(post.link)}', this)" target="_blank" class="feed-link" rel="noopener noreferrer">
+            <a href="${escapeHtmlAttr(readerHref)}" onclick="markAsRead('${escapeHtmlAttr(post.link)}', this)" target="_blank" class="feed-link" rel="noopener noreferrer">
                 <div class="feed-content-wrapper">
                     <div class="feed-text-block">
                         <h2 class="feed-item-title">${escapeHtml(post.title)}</h2>
@@ -576,14 +577,16 @@ export const renderHtmlFeed = (
         Stand: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
     </footer>
     <script>
-        // Preserve query parameters (like password) across tab navigations
-        document.querySelectorAll('.tab-btn').forEach(tab => {
-            const url = new URL(tab.href, window.location.origin);
+        // Preserve query parameters (like password) across tab navigations and reader links
+        document.querySelectorAll('.tab-btn, .feed-link').forEach(link => {
+            const url = new URL(link.href, window.location.origin);
             const currentParams = new URLSearchParams(window.location.search);
             currentParams.forEach((value, key) => {
-                url.searchParams.set(key, value);
+                if (!url.searchParams.has(key)) {
+                    url.searchParams.set(key, value);
+                }
             });
-            tab.href = url.pathname + url.search;
+            link.href = url.pathname + url.search;
         });
 
         // Scroll the active tab into view horizontally

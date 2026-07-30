@@ -1,10 +1,12 @@
 import { FEEDS, isSupportedFeed } from "../src/config";
 import { fetchAllFeeds, fetchFeedNews } from "../src/feed";
 import { renderHtmlFeed } from "../src/html";
+import { markAllAsRead, markAsRead, markAsUnread } from "../src/readStatus";
+import { fetchReaderArticle, renderReaderHtml } from "../src/reader";
 import { renderRssFeed } from "../src/rss";
-import { markAsRead, markAsUnread, markAllAsRead } from "../src/readStatus";
 
 const FOUR_HOURS_IN_SECONDS = 60 * 60 * 4;
+const ONE_DAY_IN_SECONDS = 60 * 60 * 24;
 
 type RequestLike = {
   headers: Record<string, string | string[] | undefined>;
@@ -86,7 +88,33 @@ export default async function handler(
 
   const pathname = url.pathname;
 
-  // 3. Mark As Read API Route
+  // 3. Reader Mode API Route
+  if (pathname === "/reader" || pathname === "/article") {
+    const targetUrl = getQueryParam(req.query?.url) || url.searchParams.get("url");
+    if (!targetUrl) {
+      res.status(400).json({ error: "Missing url parameter" });
+      return;
+    }
+
+    try {
+      const article = await fetchReaderArticle(targetUrl);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader(
+        "Cache-Control",
+        `public, s-maxage=${ONE_DAY_IN_SECONDS}, stale-while-revalidate=86400`,
+      );
+      res.status(200).send(renderReaderHtml(article));
+    } catch (error) {
+      res.status(500).json({
+        error: `Failed to load article in reader mode: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+    }
+    return;
+  }
+
+  // Mark As Read API Route
   if (pathname === "/mark-read") {
     const link = getQueryParam(req.query?.link) || url.searchParams.get("link");
     if (!link) {

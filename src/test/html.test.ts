@@ -43,7 +43,7 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain("TLDR Test");
   });
 
-  it("should include all articles in the HTML", async () => {
+  it("should include all articles in the HTML with reader links", async () => {
     await writeHtmlFeed("test", testPosts);
 
     const content = await readFile("./site/test.html", "utf8");
@@ -51,7 +51,9 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain("Test Article 1");
     expect(content).toContain("Test Article 2");
     expect(content).toContain("Test Article 3");
-    expect(content).toContain("https://example.com/1");
+    expect(content).toContain(
+      "/reader?url=" + encodeURIComponent("https://example.com/1"),
+    );
     expect(content).toContain("This is test content 1");
   });
 
@@ -122,9 +124,9 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain("&amp;");
     expect(content).toContain("&quot;");
 
-    // Should escape URL attributes properly (including single quotes)
+    // Should escape URL attributes properly
     expect(content).toContain(
-      'href="https://example.com/xss?param=value&amp;other=&quot;test&quot;"',
+      'href="/reader?url=https%3A%2F%2Fexample.com%2Fxss%3Fparam%3Dvalue%26other%3D%22test%22"',
     );
   });
 
@@ -142,9 +144,9 @@ describe("HTML Feed Generation", () => {
 
     const content = await readFile("./site/test.html", "utf8");
 
-    // Single quotes should be escaped in href attributes
+    // Single quotes in encodeURIComponent URLs should be formatted in href
     expect(content).toContain(
-      'href="https://example.com/article?name=O&#039;Brien"',
+      'href="/reader?url=https%3A%2F%2Fexample.com%2Farticle%3Fname%3DO&#039;Brien"',
     );
   });
 
