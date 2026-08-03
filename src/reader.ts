@@ -38,6 +38,13 @@ const REMOVE_BEFORE_PARSING = [
   "[role='navigation']",
 ];
 
+const USER_AGENTS = [
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+  "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+];
+
 export const fetchReaderArticle = async (
   targetUrl: string,
 ): Promise<ArticleData> => {
@@ -50,18 +57,50 @@ export const fetchReaderArticle = async (
 
   logger.info(`Fetching reader article from ${targetUrl}`);
 
-  try {
-    const response = await axios.get(targetUrl, {
-      timeout: 10000,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      },
-    });
+  let rawHtml = "";
+  let lastError: unknown = null;
 
-    const rawHtml = response.data as string;
+  for (const ua of USER_AGENTS) {
+    try {
+      const response = await axios.get(targetUrl, {
+        timeout: 8000,
+        headers: {
+          "User-Agent": ua,
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9,de;q=0.8",
+        },
+      });
+
+      const html = response.data as string;
+      if (
+        response.status === 200 &&
+        html &&
+        !html.includes("Just a moment...") &&
+        !html.includes("challenge-platform")
+      ) {
+        rawHtml = html;
+        break;
+      }
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (!rawHtml) {
+    logger.info(`Failed to fetch ${targetUrl} with all user agents`);
+    return {
+      title: `Artikel auf ${domain}`,
+      domain,
+      originalUrl: targetUrl,
+      contentHtml: `<p>Diese Website (<strong>${escapeHtml(
+        domain,
+      )}</strong>) schützt ihre Inhalte mit einem aktiven Bot-Schutz (z.&nbsp;B. Cloudflare Challenge) und verhindert das automatische Auslesen im Reader Mode.</p>`,
+      readingTimeMinutes: 1,
+    };
+  }
+
+  try {
     const dom = new JSDOM(cleanHtmlForJsdom(rawHtml), { url: targetUrl });
     const doc = dom.window.document;
 

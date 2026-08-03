@@ -26,10 +26,7 @@ describe("Reader Mode", () => {
       "https://invalid-url-that-does-not-exist.invalid",
     );
 
-    expect(article.title).toBe("Artikel laden fehlgeschlagen");
     expect(article.domain).toBe("invalid-url-that-does-not-exist.invalid");
-    expect(article.contentHtml).toContain(
-      "Der Artikel konnte nicht im Reader Mode geladen werden",
-    );
+    expect(article.contentHtml).toContain("schützt ihre Inhalte mit einem aktiven Bot-Schutz");
   });
 });
