@@ -221,13 +221,51 @@ export const fetchReaderArticle = async (
     );
   }
 
-  // Tier 3: WayBack Machine Snapshot Fallback
+  // Tier 3: Web Archive & archive.is/ph Snapshot Fallback
   logger.info(
-    `Tier 2 failed for ${targetUrl}, trying Tier 3 WayBack Archive...`,
+    `Tier 2 failed for ${targetUrl}, trying Tier 3 Web Archives (WayBack & archive.is)...`,
   );
+
+  const cleanUrl = targetUrl.split("?")[0];
+  const archiveUrls = [
+    `https://web.archive.org/web/2/${cleanUrl}`,
+    `https://web.archive.org/web/2/${targetUrl}`,
+    `https://archive.is/latest/${cleanUrl}`,
+    `https://archive.ph/latest/${cleanUrl}`,
+  ];
+
+  for (const archiveUrl of archiveUrls) {
+    try {
+      const archiveRes = await axios.get(archiveUrl, {
+        timeout: 8000,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9,de;q=0.8",
+        },
+      });
+
+      const html = archiveRes.data as string;
+      if (
+        archiveRes.status === 200 &&
+        html &&
+        !html.includes("security check") &&
+        !html.includes("CAPTCHA")
+      ) {
+        const article = parseRawHtmlToArticle(html, targetUrl, domain);
+        if (article) return article;
+      }
+    } catch {
+      // Try next archive URL
+    }
+  }
+
+  // Backup WayBack API lookup
   try {
     const archiveApiUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(
-      targetUrl,
+      cleanUrl,
     )}`;
     const archiveRes = await axios.get(archiveApiUrl, { timeout: 5000 });
     const closest = archiveRes.data?.archived_snapshots?.closest;
@@ -244,7 +282,7 @@ export const fetchReaderArticle = async (
     }
   } catch (error) {
     logger.info(
-      `Tier 3 WayBack Archive failed for ${targetUrl}: ${
+      `Tier 3 WayBack Archive API failed for ${targetUrl}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
