@@ -39,11 +39,100 @@ const REMOVE_BEFORE_PARSING = [
 ];
 
 const USER_AGENTS = [
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
   "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
   "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
   "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
 ];
+
+function parseJinaMarkdownToHtml(markdown: string): {
+  title?: string;
+  date?: string;
+  contentHtml: string;
+} | null {
+  let title = "";
+  let date: string | undefined = undefined;
+
+  const lines = markdown.split("\n");
+  const contentLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("Title:")) {
+      title = line.replace(/^Title:\s*/, "").trim();
+    } else if (line.startsWith("Published Time:")) {
+      const rawDate = line.replace(/^Published Time:\s*/, "").trim();
+      try {
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) {
+          date = d.toLocaleDateString("de-DE", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+        }
+      } catch {
+        date = rawDate;
+      }
+    } else if (
+      line.startsWith("URL Source:") ||
+      line.startsWith("Warning:") ||
+      line.startsWith("Markdown Content:")
+    ) {
+      continue;
+    } else {
+      contentLines.push(line);
+    }
+  }
+
+  const rawMarkdown = contentLines.join("\n").trim();
+  if (
+    rawMarkdown.includes("Please make sure you are authorized") ||
+    rawMarkdown.includes("Please enable JS") ||
+    rawMarkdown.length < 100
+  ) {
+    return null;
+  }
+
+  const html = rawMarkdown
+    .replace(/^### (.*$)/gim, "<h3>$1</h3>")
+    .replace(/^## (.*$)/gim, "<h2>$1</h2>")
+    .replace(/^# (.*$)/gim, "<h1>$1</h1>")
+    .replace(/^\> (.*$)/gim, "<blockquote>$1</blockquote>")
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.*?)\*/g, "<em>$1</em>")
+    .replace(
+      /\[(.*?)\]\((.*?)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+    );
+
+  const paragraphs = html
+    .split(/\n\s*\n/)
+    .map((p) => {
+      const trimmed = p.trim();
+      if (!trimmed) return "";
+      if (
+        trimmed.startsWith("<h") ||
+        trimmed.startsWith("<blockquote") ||
+        trimmed.startsWith("<ul") ||
+        trimmed.startsWith("<ol")
+      ) {
+        return trimmed;
+      }
+      return `<p>${trimmed}</p>`;
+    })
+    .filter(Boolean);
+
+  const contentHtml = paragraphs.join("\n");
+  if (!contentHtml || contentHtml.length < 100) {
+    return null;
+  }
+
+  return {
+    title: title || undefined,
+    date,
+    contentHtml,
+  };
+}
 
 export const fetchReaderArticle = async (
   targetUrl: string,
@@ -57,13 +146,12 @@ export const fetchReaderArticle = async (
 
   logger.info(`Fetching reader article from ${targetUrl}`);
 
+  // Tier 1: Direct Fetch with User-Agents + Readability
   let rawHtml = "";
-  let lastError: unknown = null;
-
   for (const ua of USER_AGENTS) {
     try {
       const response = await axios.get(targetUrl, {
-        timeout: 8000,
+        timeout: 4000,
         headers: {
           "User-Agent": ua,
           Accept:
@@ -77,218 +165,263 @@ export const fetchReaderArticle = async (
         response.status === 200 &&
         html &&
         !html.includes("Just a moment...") &&
-        !html.includes("challenge-platform")
+        !html.includes("challenge-platform") &&
+        !html.includes("cmsg")
       ) {
         rawHtml = html;
         break;
       }
-    } catch (err) {
-      lastError = err;
+    } catch {
+      // Ignore & try next UA
     }
   }
 
-  if (!rawHtml) {
-    logger.info(`Failed to fetch ${targetUrl} with all user agents`);
-    return {
-      title: `Artikel auf ${domain}`,
-      domain,
-      originalUrl: targetUrl,
-      contentHtml: `<p>Diese Website (<strong>${escapeHtml(
-        domain,
-      )}</strong>) schützt ihre Inhalte mit einem aktiven Bot-Schutz (z.&nbsp;B. Cloudflare Challenge) und verhindert das automatische Auslesen im Reader Mode.</p>`,
-      readingTimeMinutes: 1,
-    };
+  if (rawHtml) {
+    try {
+      const article = parseRawHtmlToArticle(rawHtml, targetUrl, domain);
+      if (article) return article;
+    } catch {
+      // Fall through to Tier 2
+    }
   }
 
+  // Tier 2: Jina Reader Proxy API
+  logger.info(
+    `Tier 1 direct fetch failed for ${targetUrl}, trying Tier 2 Jina Reader Proxy...`,
+  );
   try {
-    const dom = new JSDOM(cleanHtmlForJsdom(rawHtml), { url: targetUrl });
-    const doc = dom.window.document;
-
-    // 1. Meta Lead Image Extraction
-    const ogImage = doc
-      .querySelector('meta[property="og:image"]')
-      ?.getAttribute("content");
-    const twitterImage = doc
-      .querySelector('meta[name="twitter:image"]')
-      ?.getAttribute("content");
-    let leadImage: string | undefined = undefined;
-
-    const candidateImage = ogImage || twitterImage;
-    if (candidateImage) {
-      try {
-        leadImage = new URL(candidateImage, targetUrl).toString();
-      } catch {
-        leadImage = candidateImage;
-      }
-    }
-
-    // 2. Date Extraction
-    const pubDateMeta =
-      doc
-        .querySelector('meta[property="article:published_time"]')
-        ?.getAttribute("content") ||
-      doc.querySelector('meta[name="pubdate"]')?.getAttribute("content") ||
-      doc.querySelector("time")?.getAttribute("datetime") ||
-      doc.querySelector("time")?.textContent?.trim();
-
-    let formattedDate: string | undefined = undefined;
-    if (pubDateMeta) {
-      try {
-        const dateObj = new Date(pubDateMeta);
-        if (!isNaN(dateObj.getTime())) {
-          formattedDate = dateObj.toLocaleDateString("de-DE", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-          });
-        }
-      } catch {
-        formattedDate = pubDateMeta;
-      }
-    }
-
-    // Pre-clean noisy elements before feeding to Readability
-    REMOVE_BEFORE_PARSING.forEach((sel) => {
-      try {
-        doc.querySelectorAll(sel).forEach((el) => el.remove());
-      } catch {
-        // Ignore invalid selectors
-      }
+    const jinaRes = await axios.get(`https://r.jina.ai/${targetUrl}`, {
+      timeout: 10000,
+      headers: {
+        Accept: "text/plain, text/markdown, text/html, */*",
+      },
     });
 
-    // 3. Parse with Mozilla Readability (Firefox Reader Mode Engine)
-    const reader = new Readability(doc);
-    const parsedArticle = reader.parse();
+    if (jinaRes.status === 200 && jinaRes.data) {
+      const jinaParsed = parseJinaMarkdownToHtml(String(jinaRes.data));
+      if (jinaParsed && jinaParsed.contentHtml) {
+        const wordCount = jinaParsed.contentHtml.split(/\s+/).length;
+        const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
 
-    const title =
-      parsedArticle?.title?.trim() || doc.title?.trim() || "Artikel";
-
-    const rawContentHtml = parsedArticle?.content || "";
-
-    // Parse the clean content HTML with JSDOM for post-processing & deduplication
-    const contentDom = new JSDOM(rawContentHtml, { url: targetUrl });
-    const contentDoc = contentDom.window.document;
-
-    // A. Resolve relative links and images to absolute URLs
-    contentDoc.querySelectorAll("a").forEach((a) => {
-      const href = a.getAttribute("href");
-      if (href) {
-        try {
-          a.setAttribute("href", new URL(href, targetUrl).toString());
-          a.setAttribute("target", "_blank");
-          a.setAttribute("rel", "noopener noreferrer");
-        } catch {
-          // Keep original
-        }
-      }
-    });
-
-    contentDoc.querySelectorAll("img").forEach((img) => {
-      const src =
-        img.getAttribute("src") ||
-        img.getAttribute("data-src") ||
-        img.getAttribute("srcset");
-      if (src) {
-        try {
-          const cleanSrc = src.split(",")[0].split(" ")[0];
-          img.setAttribute("src", new URL(cleanSrc, targetUrl).toString());
-          img.removeAttribute("srcset");
-          img.removeAttribute("data-src");
-          img.setAttribute("loading", "lazy");
-        } catch {
-          img.remove();
-        }
-      } else {
-        img.remove();
-      }
-    });
-
-    // B. Deduplicate Lead Image:
-    // If the first image in content is identical to leadImage (or if leadImage isn't set, make first image leadImage and remove from body)
-    const imagesInContent = Array.from(contentDoc.querySelectorAll("img"));
-    if (imagesInContent.length > 0) {
-      const firstImgSrc = imagesInContent[0].getAttribute("src");
-      if (firstImgSrc) {
-        if (!leadImage) {
-          leadImage = firstImgSrc;
-          imagesInContent[0].remove();
-        } else if (
-          leadImage === firstImgSrc ||
-          leadImage.includes(firstImgSrc) ||
-          firstImgSrc.includes(leadImage)
-        ) {
-          // Remove duplicate lead image from body content
-          imagesInContent[0].remove();
-        }
+        return {
+          title: jinaParsed.title || `Artikel auf ${domain}`,
+          domain,
+          originalUrl: targetUrl,
+          date: jinaParsed.date,
+          contentHtml: jinaParsed.contentHtml,
+          readingTimeMinutes,
+        };
       }
     }
-
-    // C. Remove duplicate H1 title at start of content
-    const firstH1 = contentDoc.querySelector("h1");
-    if (firstH1) {
-      const h1Text = firstH1.textContent?.trim().toLowerCase() || "";
-      const articleTitleText = title.toLowerCase();
-      if (h1Text === articleTitleText || articleTitleText.includes(h1Text)) {
-        firstH1.remove();
-      }
-    }
-
-    // D. Filter out leftover newsletter promo / subscribe paragraphs
-    contentDoc.querySelectorAll("p, div, blockquote").forEach((el) => {
-      const text = el.textContent?.trim().toLowerCase() || "";
-      if (
-        (text.includes("subscribe to") ||
-          text.includes("newsletter") ||
-          text.includes("abonnieren sie") ||
-          text.includes("get the latest news in your inbox") ||
-          text.includes("sign up for our")) &&
-        text.length < 150
-      ) {
-        el.remove();
-      }
-    });
-
-    const contentHtml = contentDoc.body.innerHTML.trim();
-    const wordCount = (contentDoc.body.textContent || "").split(/\s+/).length;
-    const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
-
-    if (!contentHtml || (contentDoc.body.textContent?.trim().length || 0) < 50) {
-      return {
-        title,
-        domain,
-        originalUrl: targetUrl,
-        date: formattedDate,
-        leadImage,
-        contentHtml: `<p><em>Inhalt konnte nicht automatisch extrahiert werden. Bitte öffne die Originalseite.</em></p>`,
-        readingTimeMinutes: 1,
-      };
-    }
-
-    return {
-      title,
-      domain,
-      originalUrl: targetUrl,
-      date: formattedDate,
-      leadImage,
-      contentHtml,
-      readingTimeMinutes,
-    };
   } catch (error) {
     logger.info(
-      `Failed to fetch reader article from ${targetUrl}: ${
+      `Tier 2 Jina Reader failed for ${targetUrl}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
-
-    return {
-      title: "Artikel laden fehlgeschlagen",
-      domain,
-      originalUrl: targetUrl,
-      contentHtml: `<p>Der Artikel konnte nicht im Reader Mode geladen werden. Öffne bitte die Originalseite.</p>`,
-      readingTimeMinutes: 1,
-    };
   }
+
+  // Tier 3: WayBack Machine Snapshot Fallback
+  logger.info(
+    `Tier 2 failed for ${targetUrl}, trying Tier 3 WayBack Archive...`,
+  );
+  try {
+    const archiveApiUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(
+      targetUrl,
+    )}`;
+    const archiveRes = await axios.get(archiveApiUrl, { timeout: 5000 });
+    const closest = archiveRes.data?.archived_snapshots?.closest;
+    if (closest && closest.available && closest.url) {
+      const snapshotRes = await axios.get(closest.url, { timeout: 8000 });
+      if (snapshotRes.status === 200 && snapshotRes.data) {
+        const article = parseRawHtmlToArticle(
+          snapshotRes.data as string,
+          targetUrl,
+          domain,
+        );
+        if (article) return article;
+      }
+    }
+  } catch (error) {
+    logger.info(
+      `Tier 3 WayBack Archive failed for ${targetUrl}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  // Tier 4: Friendly Fallback Page
+  return {
+    title: `Artikel auf ${domain}`,
+    domain,
+    originalUrl: targetUrl,
+    contentHtml: `<p>Diese Website (<strong>${escapeHtml(
+      domain,
+    )}</strong>) schützt ihre Inhalte mit einem aktiven Paywall- oder Bot-Schutz (z.&nbsp;B. Cloudflare/DataDome WAF) und verhindert das automatische serverseitige Auslesen im Reader Mode.</p>`,
+    readingTimeMinutes: 1,
+  };
 };
+
+function parseRawHtmlToArticle(
+  rawHtml: string,
+  targetUrl: string,
+  domain: string,
+): ArticleData | null {
+  const dom = new JSDOM(cleanHtmlForJsdom(rawHtml), { url: targetUrl });
+  const doc = dom.window.document;
+
+  const ogImage = doc
+    .querySelector('meta[property="og:image"]')
+    ?.getAttribute("content");
+  const twitterImage = doc
+    .querySelector('meta[name="twitter:image"]')
+    ?.getAttribute("content");
+  let leadImage: string | undefined = undefined;
+
+  const candidateImage = ogImage || twitterImage;
+  if (candidateImage) {
+    try {
+      leadImage = new URL(candidateImage, targetUrl).toString();
+    } catch {
+      leadImage = candidateImage;
+    }
+  }
+
+  const pubDateMeta =
+    doc
+      .querySelector('meta[property="article:published_time"]')
+      ?.getAttribute("content") ||
+    doc.querySelector('meta[name="pubdate"]')?.getAttribute("content") ||
+    doc.querySelector("time")?.getAttribute("datetime") ||
+    doc.querySelector("time")?.textContent?.trim();
+
+  let formattedDate: string | undefined = undefined;
+  if (pubDateMeta) {
+    try {
+      const dateObj = new Date(pubDateMeta);
+      if (!isNaN(dateObj.getTime())) {
+        formattedDate = dateObj.toLocaleDateString("de-DE", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        });
+      }
+    } catch {
+      formattedDate = pubDateMeta;
+    }
+  }
+
+  REMOVE_BEFORE_PARSING.forEach((sel) => {
+    try {
+      doc.querySelectorAll(sel).forEach((el) => el.remove());
+    } catch {
+      // Ignore
+    }
+  });
+
+  const reader = new Readability(doc);
+  const parsedArticle = reader.parse();
+
+  const title =
+    parsedArticle?.title?.trim() || doc.title?.trim() || `Artikel auf ${domain}`;
+  const rawContentHtml = parsedArticle?.content || "";
+  if (
+    !rawContentHtml ||
+    (parsedArticle?.textContent?.trim()?.length || 0) < 50
+  ) {
+    return null;
+  }
+
+  const contentDom = new JSDOM(rawContentHtml, { url: targetUrl });
+  const contentDoc = contentDom.window.document;
+
+  contentDoc.querySelectorAll("a").forEach((a) => {
+    const href = a.getAttribute("href");
+    if (href) {
+      try {
+        a.setAttribute("href", new URL(href, targetUrl).toString());
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener noreferrer");
+      } catch {
+        // Keep
+      }
+    }
+  });
+
+  contentDoc.querySelectorAll("img").forEach((img) => {
+    const src =
+      img.getAttribute("src") ||
+      img.getAttribute("data-src") ||
+      img.getAttribute("srcset");
+    if (src) {
+      try {
+        const cleanSrc = src.split(",")[0].split(" ")[0];
+        img.setAttribute("src", new URL(cleanSrc, targetUrl).toString());
+        img.removeAttribute("srcset");
+        img.removeAttribute("data-src");
+        img.setAttribute("loading", "lazy");
+      } catch {
+        img.remove();
+      }
+    } else {
+      img.remove();
+    }
+  });
+
+  const imagesInContent = Array.from(contentDoc.querySelectorAll("img"));
+  if (imagesInContent.length > 0) {
+    const firstImgSrc = imagesInContent[0].getAttribute("src");
+    if (firstImgSrc) {
+      if (!leadImage) {
+        leadImage = firstImgSrc;
+        imagesInContent[0].remove();
+      } else if (
+        leadImage === firstImgSrc ||
+        leadImage.includes(firstImgSrc) ||
+        firstImgSrc.includes(leadImage)
+      ) {
+        imagesInContent[0].remove();
+      }
+    }
+  }
+
+  const firstH1 = contentDoc.querySelector("h1");
+  if (firstH1) {
+    const h1Text = firstH1.textContent?.trim().toLowerCase() || "";
+    const articleTitleText = title.toLowerCase();
+    if (h1Text === articleTitleText || articleTitleText.includes(h1Text)) {
+      firstH1.remove();
+    }
+  }
+
+  contentDoc.querySelectorAll("p, div, blockquote").forEach((el) => {
+    const text = el.textContent?.trim().toLowerCase() || "";
+    if (
+      (text.includes("subscribe to") ||
+        text.includes("newsletter") ||
+        text.includes("abonnieren sie") ||
+        text.includes("get the latest news in your inbox") ||
+        text.includes("sign up for our")) &&
+      text.length < 150
+    ) {
+      el.remove();
+    }
+  });
+
+  const contentHtml = contentDoc.body.innerHTML.trim();
+  const wordCount = (contentDoc.body.textContent || "").split(/\s+/).length;
+  const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
+
+  return {
+    title,
+    domain,
+    originalUrl: targetUrl,
+    date: formattedDate,
+    leadImage,
+    contentHtml,
+    readingTimeMinutes,
+  };
+}
 
 export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE html>
 <html lang="de">

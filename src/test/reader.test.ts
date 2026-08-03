@@ -27,6 +27,6 @@ describe("Reader Mode", () => {
     );
 
     expect(article.domain).toBe("invalid-url-that-does-not-exist.invalid");
-    expect(article.contentHtml).toContain("schützt ihre Inhalte mit einem aktiven Bot-Schutz");
+    expect(article.contentHtml).toContain("schützt ihre Inhalte mit einem aktiven Paywall- oder Bot-Schutz");
   });
 });
