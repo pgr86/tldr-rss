@@ -1,5 +1,7 @@
 import { fetchReaderArticle, renderReaderHtml } from "../reader";
 
+jest.setTimeout(15000);
+
 describe("Reader Mode", () => {
   it("should render reader HTML page with article content", () => {
     const html = renderReaderHtml({

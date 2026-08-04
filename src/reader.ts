@@ -221,15 +221,56 @@ export const fetchReaderArticle = async (
     );
   }
 
-  // Tier 3: Web Archive & archive.is/ph Snapshot Fallback
+  // Tier 3: Web Archive & archive.is Snapshot Fallback
   logger.info(
     `Tier 2 failed for ${targetUrl}, trying Tier 3 Web Archives (WayBack & archive.is)...`,
   );
 
   const cleanUrl = targetUrl.split("?")[0];
+
+  // A. Fast WayBack API lookup for direct snapshot URL
+  try {
+    const archiveApiUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(
+      cleanUrl,
+    )}`;
+    const archiveRes = await axios.get(archiveApiUrl, { timeout: 4000 });
+    const closest = archiveRes.data?.archived_snapshots?.closest;
+    if (closest && closest.available && closest.url) {
+      const rawSnapshotUrl = closest.url
+        .replace(/^http:/, "https:")
+        .replace(/\/web\/(\d+)\//, "/web/$1id_/");
+
+      logger.info(`Fetching direct WayBack snapshot: ${rawSnapshotUrl}`);
+      const snapshotRes = await axios.get(rawSnapshotUrl, {
+        timeout: 10000,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+      });
+
+      if (snapshotRes.status === 200 && snapshotRes.data) {
+        const article = parseRawHtmlToArticle(
+          snapshotRes.data as string,
+          targetUrl,
+          domain,
+        );
+        if (article) return article;
+      }
+    }
+  } catch (error) {
+    logger.info(
+      `Tier 3 WayBack API failed for ${targetUrl}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  // B. Fallback redirect archive URLs
   const archiveUrls = [
     `https://web.archive.org/web/2/${cleanUrl}`,
-    `https://web.archive.org/web/2/${targetUrl}`,
     `https://archive.is/latest/${cleanUrl}`,
     `https://archive.ph/latest/${cleanUrl}`,
   ];
@@ -237,7 +278,7 @@ export const fetchReaderArticle = async (
   for (const archiveUrl of archiveUrls) {
     try {
       const archiveRes = await axios.get(archiveUrl, {
-        timeout: 8000,
+        timeout: 6000,
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
@@ -260,32 +301,6 @@ export const fetchReaderArticle = async (
     } catch {
       // Try next archive URL
     }
-  }
-
-  // Backup WayBack API lookup
-  try {
-    const archiveApiUrl = `https://archive.org/wayback/available?url=${encodeURIComponent(
-      cleanUrl,
-    )}`;
-    const archiveRes = await axios.get(archiveApiUrl, { timeout: 5000 });
-    const closest = archiveRes.data?.archived_snapshots?.closest;
-    if (closest && closest.available && closest.url) {
-      const snapshotRes = await axios.get(closest.url, { timeout: 8000 });
-      if (snapshotRes.status === 200 && snapshotRes.data) {
-        const article = parseRawHtmlToArticle(
-          snapshotRes.data as string,
-          targetUrl,
-          domain,
-        );
-        if (article) return article;
-      }
-    }
-  } catch (error) {
-    logger.info(
-      `Tier 3 WayBack Archive API failed for ${targetUrl}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
   }
 
   // Tier 4: Friendly Fallback Page
