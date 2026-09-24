@@ -587,18 +587,6 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             background: linear-gradient(90deg, #38bdf8, #7dd3fc);
         }
 
-        .icon-btn {
-            width: 36px;
-            height: 36px;
-            padding: 0;
-            justify-content: center;
-            border-radius: 50%;
-        }
-
-        .back-btn {
-            padding-left: 8px;
-        }
-
         .btn:active {
             transform: scale(0.94);
         }
@@ -631,6 +619,25 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
                 background-color: rgba(255, 255, 255, 0.1);
                 border-color: rgba(255, 255, 255, 0.2);
             }
+        }
+
+        /* Must come after .btn so padding/size are not overridden */
+        .icon-btn {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .icon-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .back-btn {
+            height: 40px;
+            padding-left: 8px;
         }
 
         .btn-primary {
