@@ -9,7 +9,8 @@
     "test": "jest",
     "vercel:dev": "vercel dev",
     "fix": "eslint --fix 'src/**/*'",
-    "lint": "eslint 'src/**/*'"
+    "lint": "eslint 'src/**/*'",
+    "pwa:assets": "node scripts/generate-pwa-assets.mjs"
   },
   "repository": {
     "type": "git",

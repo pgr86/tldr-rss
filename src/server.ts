@@ -35,10 +35,22 @@ const server = http.createServer(async (req, res) => {
         contentType = "text/css; charset=utf-8";
       } else if (pathname.endsWith(".txt")) {
         contentType = "text/plain; charset=utf-8";
+      } else if (pathname.endsWith(".js")) {
+        contentType = "text/javascript; charset=utf-8";
+      } else if (pathname.endsWith(".webmanifest")) {
+        contentType = "application/manifest+json; charset=utf-8";
+      } else if (pathname.endsWith(".svg")) {
+        contentType = "image/svg+xml";
+      }
+
+      const headers: Record<string, string> = { "Content-Type": contentType };
+      // The service worker must always be revalidated so updates roll out promptly
+      if (pathname === "/sw.js") {
+        headers["Cache-Control"] = "no-cache";
       }
 
       const fileData = await fs.readFile(publicFilePath);
-      res.writeHead(200, { "Content-Type": contentType });
+      res.writeHead(200, headers);
       res.end(fileData);
       return;
     }

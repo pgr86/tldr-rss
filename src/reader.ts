@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability";
 import axios from "axios";
 import { JSDOM } from "jsdom";
 
+import { PWA_BODY_END, renderPwaBodyStart, renderPwaHead } from "./pwa";
 import { logger } from "./util";
 
 export type ArticleData = {
@@ -480,7 +481,7 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    ${renderPwaHead()}
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
     <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet">
     <title>${escapeHtml(article.title)} - Reader Mode</title>
@@ -514,8 +515,13 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             font-family: var(--font-family);
             line-height: 1.7;
             min-height: 100vh;
+            min-height: 100dvh;
             display: flex;
             flex-direction: column;
+        }
+
+        body.is-swiping-back {
+            box-shadow: -12px 0 32px rgba(0, 0, 0, 0.5);
         }
 
         /* Slim, custom scrollbar */
@@ -542,11 +548,59 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             position: sticky;
             top: 0;
             z-index: 100;
-            padding: 10px 16px;
+            padding: calc(8px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) 8px calc(12px + env(safe-area-inset-left, 0px));
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
+            view-transition-name: app-header;
+        }
+
+        .header-title {
+            flex: 1;
+            min-width: 0;
+            font-size: 0.88rem;
+            font-weight: 600;
+            text-align: center;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            opacity: 0;
+            transform: translateY(6px);
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+
+        header.show-title .header-title {
+            opacity: 1;
+            transform: none;
+        }
+
+        .reading-progress {
+            position: absolute;
+            left: 0;
+            bottom: -1px;
+            height: 2px;
+            width: 100%;
+            transform-origin: left;
+            transform: scaleX(0);
+            background: linear-gradient(90deg, #38bdf8, #7dd3fc);
+        }
+
+        .icon-btn {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .back-btn {
+            padding-left: 8px;
+        }
+
+        .btn:active {
+            transform: scale(0.94);
         }
 
         .nav-actions {
@@ -571,10 +625,12 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             cursor: pointer;
         }
 
-        .btn:hover {
-            color: var(--text-primary);
-            background-color: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.2);
+        @media (hover: hover) {
+            .btn:hover {
+                color: var(--text-primary);
+                background-color: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 255, 255, 0.2);
+            }
         }
 
         .btn-primary {
@@ -584,17 +640,19 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             font-weight: 600;
         }
 
-        .btn-primary:hover {
-            background-color: rgba(56, 189, 248, 0.25);
-            color: #7dd3fc;
-            border-color: rgba(56, 189, 248, 0.5);
+        @media (hover: hover) {
+            .btn-primary:hover {
+                background-color: rgba(56, 189, 248, 0.25);
+                color: #7dd3fc;
+                border-color: rgba(56, 189, 248, 0.5);
+            }
         }
 
         .reader-container {
             width: 100%;
             max-width: 740px;
             margin: 0 auto;
-            padding: 24px 16px 60px 16px;
+            padding: 24px calc(18px + env(safe-area-inset-right, 0px)) 60px calc(18px + env(safe-area-inset-left, 0px));
             flex: 1;
         }
 
@@ -624,6 +682,7 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             letter-spacing: -0.02em;
             color: var(--text-primary);
             margin-bottom: 12px;
+            view-transition-name: article-title;
         }
 
         .article-meta {
@@ -747,7 +806,7 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
         footer {
             background-color: var(--card-bg);
             border-top: 1px solid var(--border-color);
-            padding: 12px;
+            padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
             text-align: center;
             font-size: 0.72rem;
             color: var(--text-muted);
@@ -755,17 +814,24 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
     </style>
 </head>
 <body>
+    ${renderPwaBodyStart()}
     <header>
         <div class="nav-actions">
-            <button class="btn" onclick="if (history.length > 1) { history.back(); } else { window.close(); }">
-                ← Zurück
+            <button class="btn back-btn" type="button" id="back-btn" aria-label="Zurück">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                Zurück
             </button>
         </div>
+        <div class="header-title" aria-hidden="true">${escapeHtml(article.title)}</div>
         <div class="nav-actions">
-            <a href="${escapeHtmlAttr(article.originalUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
-                Original öffnen ↗
+            <button class="btn icon-btn" type="button" id="share-btn" aria-label="Teilen" hidden>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+            </button>
+            <a href="${escapeHtmlAttr(article.originalUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary icon-btn" aria-label="Original öffnen" title="Original öffnen">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
             </a>
         </div>
+        <div class="reading-progress"></div>
     </header>
 
     <main class="reader-container">
@@ -817,7 +883,123 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
                 } catch (e) {}
             });
         }
+
+        const articleLink = urlParams.get('url');
+
+        function goBack(transitionType) {
+            window.tldrApp.setTransition({ type: transitionType, link: transitionType === 'pop' ? articleLink : null });
+            if (history.length > 1) {
+                history.back();
+            } else {
+                // Opened directly (e.g. in a new tab): fall back to the feed overview
+                location.href = '/feed.html' + (password ? '?password=' + encodeURIComponent(password) : '');
+            }
+        }
+
+        document.getElementById('back-btn').addEventListener('click', () => goBack('pop'));
+
+        // Native share sheet where available
+        const shareBtn = document.getElementById('share-btn');
+        if (navigator.share) {
+            shareBtn.hidden = false;
+            shareBtn.addEventListener('click', () => {
+                navigator.share({
+                    title: ${JSON.stringify(article.title).replace(/</g, "\\u003c")},
+                    url: ${JSON.stringify(article.originalUrl).replace(/</g, "\\u003c")}
+                }).catch(() => {});
+            });
+        }
+
+        // Collapse the title into the header once it scrolls away, and show reading progress
+        const header = document.querySelector('header');
+        const progress = document.querySelector('.reading-progress');
+        const articleTitle = document.querySelector('.article-title');
+        if ('IntersectionObserver' in window && articleTitle) {
+            new IntersectionObserver(([entry]) => {
+                header.classList.toggle('show-title', !entry.isIntersecting && entry.boundingClientRect.top < 0);
+            }, { rootMargin: '-' + header.offsetHeight + 'px 0px 0px 0px' }).observe(articleTitle);
+        }
+        let progressFrame = null;
+        const updateProgress = () => {
+            progressFrame = null;
+            const max = document.documentElement.scrollHeight - window.innerHeight;
+            progress.style.transform = 'scaleX(' + (max > 0 ? Math.min(1, window.scrollY / max) : 0) + ')';
+        };
+        window.addEventListener('scroll', () => {
+            if (!progressFrame) progressFrame = requestAnimationFrame(updateProgress);
+        }, { passive: true });
+        updateProgress();
+
+        // iOS home screen apps have no back gesture: swipe from the left edge to go back
+        if (window.navigator.standalone === true) {
+            let startX = 0;
+            let startY = 0;
+            let dragging = false;
+            let decided = false;
+            let offset = 0;
+            const body = document.body;
+
+            window.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1 || e.touches[0].clientX > 24) return;
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+                dragging = true;
+                decided = false;
+                offset = 0;
+            }, { passive: true });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!dragging) return;
+                const dx = e.touches[0].clientX - startX;
+                const dy = e.touches[0].clientY - startY;
+                if (!decided) {
+                    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+                    decided = true;
+                    if (dx <= 0 || Math.abs(dy) > Math.abs(dx)) {
+                        dragging = false;
+                        return;
+                    }
+                    body.classList.add('is-swiping-back');
+                    body.style.transition = 'none';
+                }
+                e.preventDefault();
+                offset = Math.max(0, dx);
+                body.style.transform = 'translateX(' + offset + 'px)';
+            }, { passive: false });
+
+            const endSwipe = () => {
+                if (!dragging) return;
+                dragging = false;
+                if (!decided) return;
+                const width = window.innerWidth;
+                body.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)';
+                if (offset > width * 0.3) {
+                    window.tldrApp.haptic();
+                    body.style.transform = 'translateX(' + width + 'px)';
+                    // The page is already off screen, so it should not take part in the transition
+                    header.style.viewTransitionName = 'none';
+                    if (articleTitle) articleTitle.style.viewTransitionName = 'none';
+                    setTimeout(() => goBack('swipe-back'), 200);
+                } else {
+                    body.style.transform = '';
+                    setTimeout(() => body.classList.remove('is-swiping-back'), 250);
+                }
+            };
+            window.addEventListener('touchend', endSwipe, { passive: true });
+            window.addEventListener('touchcancel', endSwipe, { passive: true });
+
+            // Coming back via bfcache after a swipe: reset the page
+            window.addEventListener('pageshow', (e) => {
+                if (!e.persisted) return;
+                body.style.transition = 'none';
+                body.style.transform = '';
+                body.classList.remove('is-swiping-back');
+                header.style.viewTransitionName = '';
+                if (articleTitle) articleTitle.style.viewTransitionName = '';
+            });
+        }
     </script>
+    ${PWA_BODY_END}
 </body>
 </html>`;
 

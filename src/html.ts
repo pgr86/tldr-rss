@@ -1,6 +1,7 @@
 import { writeFile } from "fs/promises";
 
 import { FEEDS } from "./config";
+import { PWA_BODY_END, renderPwaBodyStart, renderPwaHead } from "./pwa";
 import { isRead } from "./readStatus";
 import { logger } from "./util";
 
@@ -49,11 +50,11 @@ const formatDate = (dateStr: string): string => {
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays === 0) {
-      return "Today";
+      return "Heute";
     } else if (diffDays === 1) {
-      return "Yesterday";
+      return "Gestern";
     } else if (diffDays < 7) {
-      return `${diffDays} days ago`;
+      return `vor ${diffDays} Tagen`;
     }
 
     return date.toLocaleDateString("de-DE", {
@@ -64,6 +65,12 @@ const formatDate = (dateStr: string): string => {
   } catch {
     return dateStr;
   }
+};
+
+const getDisplayName = (feed: string): string => {
+  if (feed === "ai") return "AI";
+  if (feed === "devops") return "DevOps";
+  return feed.charAt(0).toUpperCase() + feed.slice(1);
 };
 
 export const renderHtmlFeed = (
@@ -83,15 +90,12 @@ export const renderHtmlFeed = (
     )
     .slice(0, maxArticles);
 
-  const formattedFeedName =
-    feedName.charAt(0).toUpperCase() + feedName.slice(1);
+  const formattedFeedName = getDisplayName(feedName);
 
   // Generate tab HTML links
   const tabsHtml = FEEDS.map((f) => {
     const active = f === feedName;
-    let displayName = f.charAt(0).toUpperCase() + f.slice(1);
-    if (f === "ai") displayName = "AI";
-    if (f === "devops") displayName = "DevOps";
+    const displayName = getDisplayName(f);
     return `<a href="/${f}.html" class="tab-btn ${active ? "active" : ""}">${displayName}</a>`;
   }).join("\n                ");
 
@@ -100,7 +104,7 @@ export const renderHtmlFeed = (
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    ${renderPwaHead()}
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
     <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet">
     <meta name="description" content="${feedName === "leadership" ? "Leadership in Tech Feed Reader" : `TLDR ${formattedFeedName} Feed Reader`}">
@@ -139,7 +143,9 @@ export const renderHtmlFeed = (
             display: flex;
             flex-direction: column;
             height: 100vh;
+            height: 100dvh;
             overflow: hidden;
+            overscroll-behavior: none;
         }
 
         /* Slim, custom scrollbars */
@@ -170,7 +176,8 @@ export const renderHtmlFeed = (
             display: flex;
             flex-direction: column;
             gap: 12px;
-            padding: 12px 16px 8px 16px;
+            padding: calc(12px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px));
+            view-transition-name: app-header;
         }
 
         .header-top {
@@ -242,15 +249,18 @@ export const renderHtmlFeed = (
             transition: all 0.2s ease;
         }
 
-        .header-action-btn:hover {
-            color: var(--accent-color);
-            background: var(--accent-glow);
-            border-color: rgba(56, 189, 248, 0.3);
-            transform: scale(1.05);
+        @media (hover: hover) {
+            .header-action-btn:hover {
+                color: var(--accent-color);
+                background: var(--accent-glow);
+                border-color: rgba(56, 189, 248, 0.3);
+                transform: scale(1.05);
+            }
         }
 
         .header-action-btn:active {
-            transform: scale(0.95);
+            transform: scale(0.92);
+            color: var(--accent-color);
         }
 
         /* Feed tabs navigation */
@@ -292,13 +302,20 @@ export const renderHtmlFeed = (
             -webkit-user-drag: none;
         }
 
-        .tab-btn:hover {
-            color: var(--text-primary);
-            background-color: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.15);
+        @media (hover: hover) {
+            .tab-btn:hover {
+                color: var(--text-primary);
+                background-color: rgba(255, 255, 255, 0.08);
+                border-color: rgba(255, 255, 255, 0.15);
+            }
+        }
+
+        .tab-btn:active {
+            transform: scale(0.95);
         }
 
         .tab-btn.active {
+            view-transition-name: active-tab;
             color: #0b0f19;
             background-color: var(--accent-color);
             border-color: var(--accent-color);
@@ -310,7 +327,70 @@ export const renderHtmlFeed = (
         main {
             flex: 1;
             overflow-y: auto;
-            padding: 12px;
+            overscroll-behavior-y: contain;
+            -webkit-overflow-scrolling: touch;
+            padding: 12px calc(12px + env(safe-area-inset-right, 0px)) 12px calc(12px + env(safe-area-inset-left, 0px));
+        }
+
+        /* Pull to refresh */
+        .ptr-anchor {
+            position: relative;
+            height: 0;
+            z-index: 5;
+        }
+        .ptr-indicator {
+            position: absolute;
+            left: 50%;
+            top: 10px;
+            width: 34px;
+            height: 34px;
+            margin-left: -17px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-color);
+            background: #1f2937;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+            transform: translateY(-60px);
+            opacity: 0;
+        }
+        .ptr-indicator svg {
+            transition: transform 0.2s ease;
+        }
+        .ptr-indicator.is-armed svg {
+            transform: rotate(180deg);
+        }
+        .ptr-indicator.is-refreshing svg {
+            animation: ptr-spin 0.8s linear infinite;
+        }
+        @keyframes ptr-spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Pill shown when new articles arrive while scrolled down */
+        .new-articles-pill {
+            position: fixed;
+            left: 50%;
+            top: calc(var(--header-height, 100px) + 10px);
+            z-index: 20;
+            transform: translate(-50%, -12px);
+            padding: 7px 14px;
+            border-radius: 999px;
+            border: none;
+            background: var(--accent-color);
+            color: #0b0f19;
+            font: 600 0.8rem var(--font-family);
+            box-shadow: 0 6px 20px rgba(56, 189, 248, 0.35);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        .new-articles-pill.is-visible {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translate(-50%, 0);
         }
 
         /* Feed item container cards */
@@ -321,9 +401,36 @@ export const renderHtmlFeed = (
             border-radius: 10px;
             overflow: hidden;
             margin-bottom: 10px;
-            transition: border-color 0.2s, box-shadow 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s, opacity 0.35s ease, filter 0.35s ease, transform 0.18s ease, background-color 0.35s ease;
             user-select: none;
             -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        /* Cards rise in one after another on a fresh launch */
+        html:not(.is-back-nav):not(.no-stagger) .feed-item {
+            animation: card-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+            animation-delay: calc(min(var(--i, 0), 12) * 40ms + 60ms);
+        }
+        html.show-splash .feed-item {
+            animation-play-state: paused;
+        }
+        @keyframes card-in {
+            from { opacity: 0; transform: translateY(14px) scale(0.98); }
+        }
+
+        .feed-item.is-new {
+            animation: card-new 1.6s ease-out;
+        }
+        @keyframes card-new {
+            0%, 30% { border-color: rgba(56, 189, 248, 0.7); box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35), 0 0 18px rgba(56, 189, 248, 0.2); }
+        }
+
+        /* Native-feeling press feedback on touch screens */
+        @media (hover: none) {
+            .feed-item:active:not(.swiping-left):not(.swiping-right) {
+                transform: scale(0.98);
+            }
         }
 
         .feed-item:last-child {
@@ -382,16 +489,26 @@ export const renderHtmlFeed = (
             background-color: rgba(17, 24, 39, 0.5);
         }
 
-        .feed-item:hover {
-            transform: translateY(-1px);
-            border-color: rgba(56, 189, 248, 0.4);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-            opacity: 1; /* Restore opacity on hover for readability */
-            filter: none;
-        }
+        @media (hover: hover) {
+            .feed-item:hover {
+                transform: translateY(-1px);
+                border-color: rgba(56, 189, 248, 0.4);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+                opacity: 1; /* Restore opacity on hover for readability */
+                filter: none;
+            }
 
-        .feed-item:hover .feed-link {
-            background-color: var(--card-hover);
+            .feed-item:hover .feed-link {
+                background-color: var(--card-hover);
+            }
+
+            .feed-item:hover .feed-item-title {
+                color: var(--accent-color);
+            }
+
+            .feed-item:hover .feed-thumbnail {
+                transform: scale(1.05);
+            }
         }
 
         .feed-link {
@@ -433,10 +550,6 @@ export const renderHtmlFeed = (
             transition: color 0.15s ease;
         }
 
-        .feed-item:hover .feed-item-title {
-            color: var(--accent-color);
-        }
-
         .feed-item-meta {
             display: flex;
             align-items: center;
@@ -452,6 +565,7 @@ export const renderHtmlFeed = (
             line-height: 1.45;
             display: -webkit-box;
             -webkit-line-clamp: 4; /* Truncate description at 4 lines for panel display */
+            line-clamp: 4;
             -webkit-box-orient: vertical;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -508,21 +622,18 @@ export const renderHtmlFeed = (
             pointer-events: none;
         }
 
-        .feed-item:hover .feed-thumbnail {
-            transform: scale(1.05);
-        }
-
         footer {
             background-color: var(--card-bg);
             border-top: 1px solid var(--border-color);
-            padding: 8px 16px;
+            padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px));
             text-align: center;
             font-size: 0.68rem;
             color: var(--text-muted);
         }
     </style>
 </head>
-<body>
+<body data-generated="${Date.now()}">
+    ${renderPwaBodyStart()}
     <header>
         <div class="header-top">
             <div class="header-title-container">
@@ -544,13 +655,22 @@ export const renderHtmlFeed = (
             </nav>
         </div>
     </header>
-    <main>
+    <div class="ptr-anchor">
+        <div class="ptr-indicator" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14"/>
+                <path d="m19 12-7 7-7-7"/>
+            </svg>
+        </div>
+    </div>
+    <button class="new-articles-pill" type="button">Neue Artikel</button>
+    <main class="feed-list">
         ${sortedPosts
-          .map((post) => {
+          .map((post, index) => {
             const read = isRead(post.link);
             const readerHref = `/reader?url=${encodeURIComponent(post.link)}`;
-            return `        <article class="feed-item ${read ? "is-read" : ""}" data-link="${escapeHtmlAttr(post.link)}">
-            <a href="${escapeHtmlAttr(readerHref)}" onclick="markAsRead('${escapeHtmlAttr(post.link)}', this)" target="_blank" class="feed-link" rel="noopener noreferrer">
+            return `        <article class="feed-item ${read ? "is-read" : ""}" style="--i: ${index}" data-link="${escapeHtmlAttr(post.link)}">
+            <a href="${escapeHtmlAttr(readerHref)}" onclick="markAsRead(this.closest('.feed-item').dataset.link, this)" target="_blank" class="feed-link" rel="noopener noreferrer">
                 <div class="feed-content-wrapper">
                     <div class="feed-text-block">
                         <h2 class="feed-item-title">${escapeHtml(post.title)}</h2>
@@ -575,21 +695,31 @@ export const renderHtmlFeed = (
           })
           .join("\n")}
     </main>
-    <footer>
+    <footer id="feed-updated">
         Stand: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
     </footer>
     <script>
+        const feedList = document.querySelector('main.feed-list');
+        const SCROLL_KEY = 'tldr-scroll:' + location.pathname + location.search;
+
         // Preserve query parameters (like password) across tab navigations and reader links
-        document.querySelectorAll('.tab-btn, .feed-link').forEach(link => {
-            const url = new URL(link.href, window.location.origin);
-            const currentParams = new URLSearchParams(window.location.search);
-            currentParams.forEach((value, key) => {
-                if (!url.searchParams.has(key)) {
-                    url.searchParams.set(key, value);
+        function prepareLinks(scope) {
+            scope.querySelectorAll('.tab-btn, .feed-link').forEach(link => {
+                const url = new URL(link.href, window.location.origin);
+                const currentParams = new URLSearchParams(window.location.search);
+                currentParams.forEach((value, key) => {
+                    if (!url.searchParams.has(key)) {
+                        url.searchParams.set(key, value);
+                    }
+                });
+                link.href = url.pathname + url.search;
+                // Installed as an app, articles open in place instead of leaving to the browser
+                if (window.tldrApp.standalone && link.classList.contains('feed-link')) {
+                    link.removeAttribute('target');
                 }
             });
-            link.href = url.pathname + url.search;
-        });
+        }
+        prepareLinks(document);
 
         // Scroll the active tab into view horizontally
         const activeTab = document.querySelector('.tab-btn.active');
@@ -762,9 +892,7 @@ export const renderHtmlFeed = (
         }
 
         // Initialize touch and mouse swipe gestures on all feed items
-        function initSwipeGestures() {
-            const feedItems = document.querySelectorAll('.feed-item');
-            
+        function initSwipeGestures(feedItems) {
             feedItems.forEach(item => {
                 const link = item.querySelector('.feed-link');
                 if (!link) return;
@@ -776,6 +904,7 @@ export const renderHtmlFeed = (
                 let swipeDirection = null;
                 const threshold = 80;
                 let preventClick = false;
+                let crossedThreshold = false;
 
                 item.addEventListener('dragstart', (e) => e.preventDefault());
 
@@ -793,6 +922,7 @@ export const renderHtmlFeed = (
                     isSwiping = false;
                     swipeDirection = null;
                     currentX = 0;
+                    crossedThreshold = false;
                     
                     link.style.transition = 'none';
                 }, { passive: true });
@@ -820,6 +950,12 @@ export const renderHtmlFeed = (
                         if (diffX < -maxSwipe) constrainedX = -maxSwipe;
                         
                         link.style.transform = 'translateX(' + constrainedX + 'px)';
+
+                        const beyondThreshold = Math.abs(diffX) > threshold;
+                        if (beyondThreshold !== crossedThreshold) {
+                            crossedThreshold = beyondThreshold;
+                            if (beyondThreshold) window.tldrApp.haptic();
+                        }
                         
                         if (constrainedX > 0) {
                             if (swipeDirection !== 'right') {
@@ -934,8 +1070,8 @@ export const renderHtmlFeed = (
         }
 
         // Initialize click to toggle description expansion via "mehr" link
-        function initMoreToggle() {
-            const moreLinks = document.querySelectorAll('.more-link');
+        function initMoreToggle(scope) {
+            const moreLinks = scope.querySelectorAll('.more-link');
             moreLinks.forEach(linkBtn => {
                 const handleToggle = (e) => {
                     e.preventDefault();
@@ -959,12 +1095,262 @@ export const renderHtmlFeed = (
             });
         }
 
+        // Navigations inside the app get a matching view transition
+        function initNavigation() {
+            const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+            const activeIndex = tabs.findIndex(tab => tab.classList.contains('active'));
+
+            tabs.forEach((tab, index) => {
+                tab.addEventListener('click', (e) => {
+                    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || index === activeIndex) return;
+                    window.tldrApp.clearSharedNames();
+                    window.tldrApp.nameShared(feedList, 'feed-list');
+                    window.tldrApp.setTransition({ type: index > activeIndex ? 'tab-next' : 'tab-prev' });
+                    window.tldrApp.startNavigation();
+                });
+            });
+
+            // Delegated so refreshed items are covered as well
+            feedList.addEventListener('click', (e) => {
+                const link = e.target.closest('.feed-link');
+                if (!link || e.defaultPrevented || link.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+                const card = link.closest('.feed-item');
+                window.tldrApp.clearSharedNames();
+                window.tldrApp.nameShared(card.querySelector('.feed-item-title'), 'article-title');
+                window.tldrApp.setTransition({ type: 'push', link: card.dataset.link });
+                saveScrollPosition();
+                window.tldrApp.startNavigation();
+            });
+        }
+
+        function saveScrollPosition() {
+            try {
+                sessionStorage.setItem(SCROLL_KEY, String(feedList.scrollTop));
+            } catch (err) {}
+        }
+
+        // Coming back from an article: restore the list position and morph the title back into its card
+        window.tldrApp.whenRevealed((transition, hasViewTransition) => {
+            window.tldrApp.clearSharedNames();
+            if (!transition || (transition.type !== 'pop' && transition.type !== 'swipe-back')) return;
+            try {
+                const saved = sessionStorage.getItem(SCROLL_KEY);
+                if (saved !== null) feedList.scrollTop = Number(saved);
+            } catch (err) {}
+            if (hasViewTransition && transition.type === 'pop' && transition.link) {
+                const card = Array.from(document.querySelectorAll('.feed-item'))
+                    .find(item => item.dataset.link === transition.link);
+                if (card) window.tldrApp.nameShared(card.querySelector('.feed-item-title'), 'article-title');
+            }
+        });
+        window.addEventListener('pagehide', saveScrollPosition);
+
+        function updateHeaderHeight() {
+            const header = document.querySelector('header');
+            if (header) document.documentElement.style.setProperty('--header-height', header.offsetHeight + 'px');
+        }
+
+        // Fetch a fresh copy of this feed (bypassing the service worker cache) and merge it in place
+        let pendingFeed = null;
+        let refreshing = null;
+        const STALE_AFTER_MS = 5 * 60 * 1000;
+
+        function fetchFreshFeed() {
+            return fetch(location.href, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: { 'X-Refresh': '1' }
+            }).then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.text();
+            }).then(html => new DOMParser().parseFromString(html, 'text/html'));
+        }
+
+        function updateFreshness(doc) {
+            const freshFooter = doc.getElementById('feed-updated');
+            const footer = document.getElementById('feed-updated');
+            if (freshFooter && footer) footer.innerHTML = freshFooter.innerHTML;
+            document.body.dataset.generated = doc.body.dataset.generated || String(Date.now());
+        }
+
+        function applyFeed(doc, addedLinks) {
+            updateFreshness(doc);
+            const freshList = doc.querySelector('main.feed-list');
+            if (!freshList) return;
+
+            const swap = () => {
+                document.documentElement.classList.add('no-stagger');
+                feedList.innerHTML = freshList.innerHTML;
+                const items = feedList.querySelectorAll('.feed-item');
+                items.forEach(item => {
+                    if (addedLinks.includes(item.dataset.link)) item.classList.add('is-new');
+                });
+                prepareLinks(feedList);
+                applyLocalReadStatus();
+                initSwipeGestures(items);
+                initMoreToggle(feedList);
+            };
+            if (document.startViewTransition) {
+                window.tldrApp.nameShared(feedList, 'feed-list');
+                document.startViewTransition(swap).finished.finally(() => window.tldrApp.clearSharedNames());
+            } else {
+                swap();
+            }
+        }
+
+        function refreshFeed(options) {
+            if (refreshing) return refreshing;
+            const silent = options && options.silent;
+            refreshing = fetchFreshFeed().then(doc => {
+                const currentLinks = Array.from(feedList.querySelectorAll('.feed-item')).map(item => item.dataset.link);
+                const freshLinks = Array.from(doc.querySelectorAll('main.feed-list .feed-item')).map(item => item.dataset.link);
+                const addedLinks = freshLinks.filter(link => !currentLinks.includes(link));
+                const changed = freshLinks.join(' ') !== currentLinks.join(' ');
+
+                if (!changed) {
+                    updateFreshness(doc);
+                    if (!silent) window.tldrApp.toast('Alles aktuell');
+                    return;
+                }
+                // Don't shuffle the list under someone who is reading further down
+                if (silent && feedList.scrollTop > 40) {
+                    pendingFeed = { doc, addedLinks };
+                    const pill = document.querySelector('.new-articles-pill');
+                    pill.textContent = addedLinks.length > 0
+                        ? '↑ ' + addedLinks.length + (addedLinks.length === 1 ? ' neuer Artikel' : ' neue Artikel')
+                        : '↑ Feed aktualisiert';
+                    pill.classList.add('is-visible');
+                    return;
+                }
+                applyFeed(doc, addedLinks);
+                if (addedLinks.length > 0) {
+                    window.tldrApp.toast(addedLinks.length + (addedLinks.length === 1 ? ' neuer Artikel' : ' neue Artikel'));
+                } else if (!silent) {
+                    window.tldrApp.toast('Feed aktualisiert');
+                }
+            }).catch(err => {
+                console.error('Failed to refresh feed:', err);
+                if (!silent) window.tldrApp.toast(navigator.onLine ? 'Aktualisierung fehlgeschlagen' : 'Du bist offline');
+            }).finally(() => {
+                refreshing = null;
+            });
+            return refreshing;
+        }
+
+        function initNewArticlesPill() {
+            const pill = document.querySelector('.new-articles-pill');
+            pill.addEventListener('click', () => {
+                pill.classList.remove('is-visible');
+                feedList.scrollTo({ top: 0, behavior: 'smooth' });
+                if (pendingFeed) {
+                    applyFeed(pendingFeed.doc, pendingFeed.addedLinks);
+                    pendingFeed = null;
+                }
+            });
+        }
+
+        function refreshIfStale() {
+            const generated = Number(document.body.dataset.generated || 0);
+            if (document.visibilityState === 'visible' && Date.now() - generated > STALE_AFTER_MS) {
+                refreshFeed({ silent: true });
+            }
+        }
+
+        // Pull down at the top of the list to refresh, like a native app
+        function initPullToRefresh() {
+            const indicator = document.querySelector('.ptr-indicator');
+            const TRIGGER = 70;
+            const MAX = 110;
+            let startX = 0;
+            let startY = 0;
+            let tracking = false;
+            let pulling = false;
+            let distance = 0;
+            let armed = false;
+
+            const render = (value, animate) => {
+                const transition = animate ? 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s' : 'none';
+                feedList.style.transition = transition;
+                indicator.style.transition = transition;
+                feedList.style.transform = value > 0 ? 'translateY(' + value + 'px)' : '';
+                indicator.style.transform = 'translateY(' + (value - 60) + 'px) rotate(' + value * 2 + 'deg)';
+                indicator.style.opacity = String(Math.min(1, value / TRIGGER));
+            };
+
+            feedList.addEventListener('touchstart', (e) => {
+                if (refreshing || feedList.scrollTop > 0 || e.touches.length !== 1) return;
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+                tracking = true;
+                pulling = false;
+                distance = 0;
+                armed = false;
+            }, { passive: true });
+
+            feedList.addEventListener('touchmove', (e) => {
+                if (!tracking) return;
+                const dx = e.touches[0].clientX - startX;
+                const dy = e.touches[0].clientY - startY;
+                if (!pulling) {
+                    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+                    if (dy <= 0 || Math.abs(dx) > Math.abs(dy) || feedList.scrollTop > 0) {
+                        tracking = false;
+                        return;
+                    }
+                    pulling = true;
+                }
+                e.preventDefault();
+                // Rubber band resistance
+                distance = Math.min(MAX, dy * 0.5);
+                if ((distance >= TRIGGER) !== armed) {
+                    armed = distance >= TRIGGER;
+                    indicator.classList.toggle('is-armed', armed);
+                    if (armed) window.tldrApp.haptic();
+                }
+                render(distance, false);
+            }, { passive: false });
+
+            const end = () => {
+                if (!tracking) return;
+                tracking = false;
+                if (!pulling) return;
+                pulling = false;
+                indicator.classList.remove('is-armed');
+                if (!armed) {
+                    render(0, true);
+                    return;
+                }
+                indicator.classList.add('is-refreshing');
+                render(56, true);
+                const minimumSpin = new Promise(resolve => setTimeout(resolve, 600));
+                Promise.all([refreshFeed({ silent: false }), minimumSpin]).then(() => {
+                    indicator.classList.remove('is-refreshing');
+                    render(0, true);
+                });
+            };
+            feedList.addEventListener('touchend', end, { passive: true });
+            feedList.addEventListener('touchcancel', end, { passive: true });
+        }
+
         // Run gesture and toggle initialization when DOM is ready
         function initAll() {
             applyLocalReadStatus();
             initTabScrolling();
-            initSwipeGestures();
-            initMoreToggle();
+            initSwipeGestures(document.querySelectorAll('.feed-item'));
+            initMoreToggle(document);
+            initNavigation();
+            initPullToRefresh();
+            initNewArticlesPill();
+            updateHeaderHeight();
+            window.addEventListener('resize', updateHeaderHeight);
+            document.addEventListener('visibilitychange', refreshIfStale);
+            window.addEventListener('pageshow', (e) => {
+                if (e.persisted) {
+                    applyLocalReadStatus();
+                    refreshIfStale();
+                }
+            });
+            setTimeout(refreshIfStale, 1200);
         }
 
         if (document.readyState === 'loading') {
@@ -973,6 +1359,7 @@ export const renderHtmlFeed = (
             initAll();
         }
     </script>
+    ${PWA_BODY_END}
 </body>
 </html>`;
 };

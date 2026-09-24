@@ -158,7 +158,7 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain(
       '<span class="more-link" role="button" tabindex="0">mehr</span>',
     );
-    expect(content).toContain("initMoreToggle()");
+    expect(content).toContain("initMoreToggle(document)");
   });
 
   it("should include mouse drag scrolling for tabs and mouse swipe gestures for feed items", async () => {
@@ -182,6 +182,20 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain("localStorage.setItem(READ_STATUS_KEY");
     expect(content).toContain("applyLocalReadStatus();");
     expect(content).toContain("markAsRead(item.dataset.link, linkElement)");
+  });
+
+  it("should wire up the installable app shell and view transitions", async () => {
+    await writeHtmlFeed("test", testPosts);
+
+    const content = await readFile("./site/test.html", "utf8");
+
+    expect(content).toContain('<link rel="manifest" href="/manifest.webmanifest">');
+    expect(content).toContain("viewport-fit=cover");
+    expect(content).toContain("@view-transition");
+    expect(content).toContain("navigator.serviceWorker.register('/sw.js')");
+    expect(content).toContain('<div id="app-splash"');
+    expect(content).toContain('<span id="app-ready" hidden></span>');
+    expect(content).toContain("initPullToRefresh()");
   });
 
   it("should throw error if no posts are provided", async () => {

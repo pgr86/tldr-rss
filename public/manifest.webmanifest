@@ -1,0 +1,18 @@
+{
+  "id": "/tldr-reader",
+  "name": "TLDR Reader",
+  "short_name": "TLDR",
+  "description": "Die TLDR Newsletter als schneller, werbefreier Reader.",
+  "lang": "de",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0f19",
+  "theme_color": "#111827",
+  "categories": ["news", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

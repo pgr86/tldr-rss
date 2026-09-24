@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="color-scheme" content="dark">
+  <title>Offline – TLDR</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #0b0f19;
+      color: #f3f4f6;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 24px;
+      text-align: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .orb {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 42% 38%, #e0f7ff 0%, #7dd3fc 35%, #38bdf8 70%, #0ea5e9 100%);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.6);
+      opacity: 0.5;
+      filter: grayscale(60%);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 1.15rem;
+      margin: 0;
+    }
+    p {
+      margin: 0;
+      max-width: 32ch;
+      color: #9ca3af;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      border-radius: 999px;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      font: 600 0.9rem system-ui, -apple-system, sans-serif;
+    }
+    button:active {
+      transform: scale(0.96);
+    }
+  </style>
+</head>
+<body>
+  <div class="orb"></div>
+  <h1>Du bist offline</h1>
+  <p>Diese Seite ist noch nicht auf deinem Gerät gespeichert. Bereits geöffnete Feeds und Artikel kannst du weiterhin lesen.</p>
+  <button type="button" onclick="location.reload()">Erneut versuchen</button>
+  <script>
+    window.addEventListener('online', function () { location.reload(); });
+  </script>
+</body>
+</html>
