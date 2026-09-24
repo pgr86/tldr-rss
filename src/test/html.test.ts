@@ -173,6 +173,17 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain("window.addEventListener('mouseup'");
   });
 
+  it("should persist read status locally using the original article link", async () => {
+    await writeHtmlFeed("test", testPosts);
+
+    const content = await readFile("./site/test.html", "utf8");
+
+    expect(content).toContain(`data-link="${testPosts[0].link}"`);
+    expect(content).toContain("localStorage.setItem(READ_STATUS_KEY");
+    expect(content).toContain("applyLocalReadStatus();");
+    expect(content).toContain("markAsRead(item.dataset.link, linkElement)");
+  });
+
   it("should throw error if no posts are provided", async () => {
     await expect(writeHtmlFeed("test", [])).rejects.toThrow(
       "No posts found for test",

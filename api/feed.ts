@@ -232,17 +232,18 @@ export default async function handler(
     return;
   }
 
-  res.setHeader(
-    "Cache-Control",
-    `public, s-maxage=${FOUR_HOURS_IN_SECONDS}, stale-while-revalidate=3600`,
-  );
-
   if (format === "html") {
+    // The HTML view contains per-user read status, so it must not be served from a shared CDN cache
+    res.setHeader("Cache-Control", "private, no-cache");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.status(200).send(renderHtmlFeed(baseFeed, filteredNews));
     return;
   }
 
+  res.setHeader(
+    "Cache-Control",
+    `public, s-maxage=${FOUR_HOURS_IN_SECONDS}, stale-while-revalidate=3600`,
+  );
   res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
   res.status(200).send(renderRssFeed(feed, filteredNews, getBaseUrl(req), isDirect));
 }

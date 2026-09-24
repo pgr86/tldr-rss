@@ -549,7 +549,7 @@ export const renderHtmlFeed = (
           .map((post) => {
             const read = isRead(post.link);
             const readerHref = `/reader?url=${encodeURIComponent(post.link)}`;
-            return `        <article class="feed-item ${read ? "is-read" : ""}">
+            return `        <article class="feed-item ${read ? "is-read" : ""}" data-link="${escapeHtmlAttr(post.link)}">
             <a href="${escapeHtmlAttr(readerHref)}" onclick="markAsRead('${escapeHtmlAttr(post.link)}', this)" target="_blank" class="feed-link" rel="noopener noreferrer">
                 <div class="feed-content-wrapper">
                     <div class="feed-text-block">
@@ -597,27 +597,75 @@ export const renderHtmlFeed = (
             activeTab.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
         }
 
+        // Read status is also kept in localStorage so it survives reloads even when
+        // the server can't persist it (ephemeral serverless filesystem, CDN-cached HTML)
+        const READ_STATUS_KEY = 'tldr-read-status';
+        const MAX_READ_STATUS_ENTRIES = 1000;
+
+        function loadLocalReadStatus() {
+            try {
+                const data = JSON.parse(localStorage.getItem(READ_STATUS_KEY) || '{}');
+                return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+            } catch (err) {
+                return {};
+            }
+        }
+
+        function saveLocalReadStatus(links, read) {
+            try {
+                const status = loadLocalReadStatus();
+                links.forEach(link => {
+                    // Re-insert so the most recent changes are kept when pruning
+                    delete status[link];
+                    status[link] = read;
+                });
+                const keys = Object.keys(status);
+                keys.slice(0, Math.max(0, keys.length - MAX_READ_STATUS_ENTRIES)).forEach(key => delete status[key]);
+                localStorage.setItem(READ_STATUS_KEY, JSON.stringify(status));
+            } catch (err) {
+                console.error('Failed to store read status locally:', err);
+            }
+        }
+
+        function applyLocalReadStatus() {
+            const status = loadLocalReadStatus();
+            document.querySelectorAll('.feed-item[data-link]').forEach(item => {
+                const read = status[item.dataset.link];
+                if (read === true) {
+                    item.classList.add('is-read');
+                } else if (read === false) {
+                    item.classList.remove('is-read');
+                }
+            });
+        }
+
+        function postReadStatus(path, param, value) {
+            // Extract the password query parameter from current URL to propagate if used
+            const urlParams = new URLSearchParams(window.location.search);
+            const password = urlParams.get('password');
+
+            let targetUrl = path + '?' + param + '=' + encodeURIComponent(value);
+            if (password) {
+                targetUrl += '&password=' + encodeURIComponent(password);
+            }
+
+            return fetch(targetUrl, {
+                method: 'POST',
+                keepalive: true
+            });
+        }
+
         function markAsRead(link, element) {
             // Immediately mark it as read visually
             const card = element.closest('.feed-item');
             if (card) {
                 card.classList.add('is-read');
             }
-            
-            // Extract the password query parameter from current URL to propagate if used
-            const urlParams = new URLSearchParams(window.location.search);
-            const password = urlParams.get('password');
-            
-            let targetUrl = '/mark-read?link=' + encodeURIComponent(link);
-            if (password) {
-                targetUrl += '&password=' + encodeURIComponent(password);
-            }
-            
+            saveLocalReadStatus([link], true);
+
             // Post the read status back to the server
-            fetch(targetUrl, {
-                method: 'POST',
-                keepalive: true
-            }).catch(err => console.error('Failed to mark read status:', err));
+            postReadStatus('/mark-read', 'link', link)
+                .catch(err => console.error('Failed to mark read status:', err));
         }
 
         function markAllAsReadCurrentFeed() {
@@ -627,65 +675,36 @@ export const renderHtmlFeed = (
             const links = [];
             feedItems.forEach(item => {
                 item.classList.add('is-read');
-                const linkElement = item.querySelector('.feed-link');
-                if (linkElement) {
-                    const href = linkElement.getAttribute('href');
-                    if (href) {
-                        links.push(href);
-                    }
+                if (item.dataset.link) {
+                    links.push(item.dataset.link);
                 }
             });
 
             if (links.length === 0) return;
 
-            // Extract the password query parameter from current URL to propagate if used
-            const urlParams = new URLSearchParams(window.location.search);
-            const password = urlParams.get('password');
-            
-            let targetUrl = '/mark-all-read?links=' + encodeURIComponent(links.join(','));
-            if (password) {
-                targetUrl += '&password=' + encodeURIComponent(password);
-            }
-            
-            fetch(targetUrl, {
-                method: 'POST',
-                keepalive: true
-            }).catch(err => console.error('Failed to mark all as read:', err));
+            saveLocalReadStatus(links, true);
+            postReadStatus('/mark-all-read', 'links', links.join(','))
+                .catch(err => console.error('Failed to mark all as read:', err));
         }
 
         function markAsReadFromSwipe(item) {
             if (item.classList.contains('is-read')) return;
             const linkElement = item.querySelector('.feed-link');
-            if (linkElement) {
-                const link = linkElement.getAttribute('href');
-                if (link) {
-                    markAsRead(link, linkElement);
-                }
+            if (linkElement && item.dataset.link) {
+                markAsRead(item.dataset.link, linkElement);
             }
         }
 
         function markAsUnreadFromSwipe(item) {
             if (!item.classList.contains('is-read')) return;
-            const linkElement = item.querySelector('.feed-link');
-            if (linkElement) {
-                const link = linkElement.getAttribute('href');
-                if (link) {
-                    item.classList.remove('is-read');
-                    
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const password = urlParams.get('password');
-                    
-                    let targetUrl = '/mark-unread?link=' + encodeURIComponent(link);
-                    if (password) {
-                        targetUrl += '&password=' + encodeURIComponent(password);
-                    }
-                    
-                    fetch(targetUrl, {
-                        method: 'POST',
-                        keepalive: true
-                    }).catch(err => console.error('Failed to mark unread status:', err));
-                }
-            }
+            const link = item.dataset.link;
+            if (!link) return;
+
+            item.classList.remove('is-read');
+            saveLocalReadStatus([link], false);
+
+            postReadStatus('/mark-unread', 'link', link)
+                .catch(err => console.error('Failed to mark unread status:', err));
         }
 
         // Initialize mouse drag scrolling for tab bar
@@ -942,6 +961,7 @@ export const renderHtmlFeed = (
 
         // Run gesture and toggle initialization when DOM is ready
         function initAll() {
+            applyLocalReadStatus();
             initTabScrolling();
             initSwipeGestures();
             initMoreToggle();
