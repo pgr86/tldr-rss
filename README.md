@@ -19,6 +19,33 @@ Example:
 MAX_DAYS=7 yarn start  # Fetch articles from the last 7 days
 ```
 
+## Push notifications
+
+Installed as an app (PWA), the feed pages show a bell in the header. Tapping it asks for
+notification permission and subscribes the device via Web Push.
+
+New articles are not pushed as soon as a newsletter drops. The server queues them and
+sends **one insight at a time**, roughly every `PUSH_INTERVAL_MINUTES` (±30 % jitter).
+Each push rotates to a different feed and picks that feed's newest article. Articles that
+have already been read, or that waited longer than `PUSH_MAX_AGE_HOURS`, are skipped.
+Tapping a notification opens the article in the reader and marks it as read. "Gelesen"
+marks it as read without opening it.
+
+This needs the long-running Node server (`node dist/server`, e.g. the Docker image). On
+Vercel there is no process that could send pushes, so the bell stays hidden there.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | generated | Web Push keys. Generate a pair once with `npx web-push generate-vapid-keys` and set both. Otherwise a pair is generated into `.cache/` and changes whenever that directory is lost. Devices then resubscribe on their next app launch. |
+| `VAPID_SUBJECT` | `mailto:tldr-reader@example.com` | Contact address sent to the push services |
+| `PUSH_INTERVAL_MINUTES` | `45` | Average gap between two notifications |
+| `PUSH_MAX_AGE_HOURS` | `36` | Queued articles older than this are dropped |
+| `PUSH_QUIET_HOURS` | `22-7` | No notifications in this local time window (`off` disables it) |
+| `PUSH_TIMEZONE` | `Europe/Berlin` | Time zone for the quiet hours |
+
+Subscriptions and the queue live in `.cache/push_state.json`. Mount `.cache` as a volume
+so they survive redeploys.
+
 ## Vercel deployment
 
 This repository is set up to run on Vercel using dynamic serverless generation.

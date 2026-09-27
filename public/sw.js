@@ -1,6 +1,6 @@
 // Service worker: instant launches from cache, offline reading and a fallback page.
 // Bump VERSION whenever the caching strategy or the shell assets change.
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `tldr-shell-${VERSION}`;
 const PAGE_CACHE = `tldr-pages-${VERSION}`;
 const READER_CACHE = `tldr-reader-${VERSION}`;
@@ -170,4 +170,64 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(fetchFromNetwork(event).catch(() => offlineResponse()));
   }
+});
+
+// Web push: the server drips new insights one at a time (see src/push.ts)
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (error) {
+    data = { title: "TLDR", body: event.data ? event.data.text() : "" };
+  }
+
+  const actions = data.link
+    ? [
+        { action: "open", title: "Lesen" },
+        { action: "mark-read", title: "Gelesen" },
+      ]
+    : [];
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || "TLDR", {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/badge-96.png",
+      image: data.image,
+      tag: data.tag,
+      data: { url: data.url || "/feed.html", link: data.link },
+      actions,
+    }),
+  );
+});
+
+const markReadFromNotification = (link) =>
+  fetch(`/mark-read?link=${encodeURIComponent(link)}`, {
+    method: "POST",
+    credentials: "same-origin",
+  }).catch(() => {});
+
+const openInApp = async (url) => {
+  const target = new URL(url, self.location.origin).href;
+  const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  const existing = windows.find((client) => client.url === target) || windows[0];
+  if (existing) {
+    const client = existing.url === target ? existing : await existing.navigate(target).catch(() => null);
+    if (client) return client.focus();
+  }
+  return self.clients.openWindow(target);
+};
+
+self.addEventListener("notificationclick", (event) => {
+  const { url, link } = event.notification.data || {};
+  event.notification.close();
+
+  if (event.action === "mark-read") {
+    if (link) event.waitUntil(markReadFromNotification(link));
+    return;
+  }
+
+  event.waitUntil(
+    Promise.all([link ? markReadFromNotification(link) : null, openInApp(url || "/feed.html")]),
+  );
 });

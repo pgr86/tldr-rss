@@ -53,6 +53,14 @@ const ICONS = [
   { file: "icons/apple-touch-icon.png", size: 180, orbScale: 1.1, rounded: 0 },
 ];
 
+// Android status bar badge: only the alpha channel is used, so a plain white orb and ring
+const BADGE = { file: "icons/badge-96.png", size: 96 };
+const badgePage = (size) => `<!DOCTYPE html><html><head><style>
+  html, body { margin: 0; width: ${size}px; height: ${size}px; background: transparent; }
+  .orb { position: absolute; inset: ${size * 0.3}px; border-radius: 50%; background: #fff; }
+  .ring { position: absolute; inset: ${size * 0.1}px; border-radius: 50%; border: ${size * 0.07}px solid #fff; }
+</style></head><body><div class="ring"></div><div class="orb"></div></body></html>`;
+
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || undefined,
 });
@@ -71,6 +79,16 @@ for (const icon of ICONS) {
   });
   await page.close();
   console.log(`Rendered ${icon.file}`);
+}
+
+{
+  const page = await browser.newPage({
+    viewport: { width: BADGE.size, height: BADGE.size },
+  });
+  await page.setContent(badgePage(BADGE.size));
+  await page.screenshot({ path: path.join(publicDir, BADGE.file), omitBackground: true });
+  await page.close();
+  console.log(`Rendered ${BADGE.file}`);
 }
 
 for (const image of STARTUP_IMAGES) {
