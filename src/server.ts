@@ -5,6 +5,7 @@ import url from "url";
 
 import handler from "../api/feed";
 import { fetchAllFeeds } from "./feed";
+import { refreshPushQueue, startPushScheduler } from "./push";
 
 const port = process.env.PORT || 3000;
 
@@ -79,12 +80,26 @@ const server = http.createServer(async (req, res) => {
     query.format = "html";
   }
 
+  let rawBody: string | undefined;
+  if (req.method === "POST") {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of req) {
+      size += (chunk as Buffer).length;
+      // Push subscriptions are tiny; anything bigger isn't meant for us
+      if (size > 64 * 1024) break;
+      chunks.push(chunk as Buffer);
+    }
+    rawBody = Buffer.concat(chunks).toString("utf-8");
+  }
+
   // Construct a request-like object for the handler
   const requestLike = {
     headers: req.headers as Record<string, string | string[] | undefined>,
     query,
     url: req.url,
     method: req.method,
+    body: rawBody,
   };
 
   // Construct a response-like object for the handler
@@ -127,12 +142,14 @@ const warmCache = async () => {
     console.log("Starting background cache warming...");
     await fetchAllFeeds();
     console.log("Background cache warming completed successfully.");
+    await refreshPushQueue();
   } catch (error) {
     console.error("Error warming cache in background:", error);
   }
 };
 
 // Warm cache on startup
+startPushScheduler();
 warmCache();
 
 // Periodically warm cache every hour

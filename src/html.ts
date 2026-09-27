@@ -67,7 +67,7 @@ const formatDate = (dateStr: string): string => {
   }
 };
 
-const getDisplayName = (feed: string): string => {
+export const getDisplayName = (feed: string): string => {
   if (feed === "ai") return "AI";
   if (feed === "devops") return "DevOps";
   return feed.charAt(0).toUpperCase() + feed.slice(1);
@@ -261,6 +261,29 @@ export const renderHtmlFeed = (
         .header-action-btn:active {
             transform: scale(0.92);
             color: var(--accent-color);
+        }
+
+        .header-action-btn[hidden] {
+            display: none;
+        }
+
+        #push-toggle-btn .bell-on,
+        #push-toggle-btn.is-on .bell-off {
+            display: none;
+        }
+
+        #push-toggle-btn.is-on .bell-on {
+            display: block;
+        }
+
+        #push-toggle-btn.is-on {
+            color: var(--accent-color);
+            border-color: rgba(56, 189, 248, 0.3);
+        }
+
+        #push-toggle-btn.is-busy {
+            opacity: 0.5;
+            pointer-events: none;
         }
 
         /* Feed tabs navigation */
@@ -641,6 +664,18 @@ export const renderHtmlFeed = (
                 <p>Aktuelle Artikel aus dem ${feedName === "leadership" ? "Leadership in Tech" : "TLDR"} Feed</p>
             </div>
             <div class="header-actions">
+                <button id="push-toggle-btn" class="header-action-btn" type="button" title="Push-Benachrichtigungen aktivieren" aria-pressed="false" hidden>
+                    <svg class="bell-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.268 21a2 2 0 0 0 3.464 0"/>
+                        <path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742"/>
+                        <path d="m2 2 20 20"/>
+                        <path d="M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05"/>
+                    </svg>
+                    <svg class="bell-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.268 21a2 2 0 0 0 3.464 0"/>
+                        <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>
+                    </svg>
+                </button>
                 <button id="mark-all-read-btn" class="header-action-btn" title="Alle als gelesen markieren" onclick="markAllAsReadCurrentFeed()">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M18 6 7 17l-5-5"/>
@@ -1333,6 +1368,105 @@ export const renderHtmlFeed = (
         }
 
         // Run gesture and toggle initialization when DOM is ready
+        // Push notifications: the server sends one new insight at a time (see src/push.ts)
+        function initPushToggle() {
+            const btn = document.getElementById('push-toggle-btn');
+            if (!btn || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+
+            const password = new URLSearchParams(window.location.search).get('password');
+            const withPassword = (path) => password ? path + '?password=' + encodeURIComponent(password) : path;
+            const postJson = (path, body) => fetch(withPassword(path), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res;
+            });
+
+            const toKey = (base64) => {
+                const padded = (base64 + '='.repeat((4 - base64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+                return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+            };
+            const sameKey = (buffer, base64) => {
+                if (!buffer) return false;
+                const a = new Uint8Array(buffer);
+                const b = toKey(base64);
+                return a.length === b.length && a.every((value, i) => value === b[i]);
+            };
+
+            let publicKey = '';
+            const setState = (on) => {
+                btn.classList.toggle('is-on', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                btn.title = on ? 'Push-Benachrichtigungen deaktivieren' : 'Push-Benachrichtigungen aktivieren';
+            };
+            const subscribe = (registration) => registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: toKey(publicKey)
+            });
+
+            fetch(withPassword('/push/config'), { credentials: 'same-origin', cache: 'no-store' })
+                .then(res => res.ok ? res.json() : null)
+                .then(async (config) => {
+                    if (!config || !config.enabled || !config.publicKey) return;
+                    publicKey = config.publicKey;
+                    btn.hidden = false;
+                    updateHeaderHeight();
+
+                    const registration = await navigator.serviceWorker.ready;
+                    let subscription = await registration.pushManager.getSubscription();
+                    if (subscription && Notification.permission === 'granted') {
+                        // The server key changed (e.g. redeploy without fixed VAPID keys): subscribe again
+                        if (!sameKey(subscription.options.applicationServerKey, publicKey)) {
+                            await subscription.unsubscribe();
+                            subscription = await subscribe(registration);
+                        }
+                        // Re-register on every launch so the server never silently forgets this device
+                        await postJson('/push/subscribe', { subscription: subscription.toJSON(), welcome: false });
+                    }
+                    setState(!!subscription && Notification.permission === 'granted');
+                })
+                .catch(err => console.error('Push setup failed:', err));
+
+            btn.addEventListener('click', async () => {
+                btn.classList.add('is-busy');
+                window.tldrApp.haptic();
+                try {
+                    const registration = await navigator.serviceWorker.ready;
+                    const existing = await registration.pushManager.getSubscription();
+                    if (existing && btn.classList.contains('is-on')) {
+                        await postJson('/push/unsubscribe', { endpoint: existing.endpoint }).catch(() => {});
+                        await existing.unsubscribe();
+                        setState(false);
+                        window.tldrApp.toast('Benachrichtigungen aus');
+                        return;
+                    }
+
+                    const permission = await Notification.requestPermission();
+                    if (permission !== 'granted') {
+                        window.tldrApp.toast(permission === 'denied' ? 'Benachrichtigungen sind blockiert' : 'Nicht aktiviert');
+                        return;
+                    }
+                    let subscription = existing;
+                    if (subscription && !sameKey(subscription.options.applicationServerKey, publicKey)) {
+                        await subscription.unsubscribe();
+                        subscription = null;
+                    }
+                    if (!subscription) subscription = await subscribe(registration);
+                    await postJson('/push/subscribe', { subscription: subscription.toJSON(), welcome: true });
+                    setState(true);
+                    window.tldrApp.toast('Benachrichtigungen an');
+                } catch (err) {
+                    console.error('Push toggle failed:', err);
+                    window.tldrApp.toast('Das hat nicht geklappt');
+                } finally {
+                    btn.classList.remove('is-busy');
+                }
+            });
+        }
+
         function initAll() {
             applyLocalReadStatus();
             initTabScrolling();
@@ -1341,6 +1475,7 @@ export const renderHtmlFeed = (
             initNavigation();
             initPullToRefresh();
             initNewArticlesPill();
+            initPushToggle();
             updateHeaderHeight();
             window.addEventListener('resize', updateHeaderHeight);
             document.addEventListener('visibilitychange', refreshIfStale);

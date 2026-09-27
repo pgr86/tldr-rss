@@ -1,8 +1,14 @@
 import { FEEDS, isSupportedFeed } from "../src/config";
 import { fetchAllFeeds, fetchFeedNews } from "../src/feed";
 import { renderHtmlFeed } from "../src/html";
-import { markAllAsRead, markAsRead, markAsUnread } from "../src/readStatus";
+import {
+  addSubscription,
+  getPushConfig,
+  removeSubscription,
+  sendWelcomeNotification,
+} from "../src/push";
 import { fetchReaderArticle, renderReaderHtml } from "../src/reader";
+import { markAllAsRead, markAsRead, markAsUnread } from "../src/readStatus";
 import { renderRssFeed } from "../src/rss";
 
 const FOUR_HOURS_IN_SECONDS = 60 * 60 * 4;
@@ -13,6 +19,7 @@ type RequestLike = {
   query?: Record<string, string | string[] | undefined>;
   url?: string;
   method?: string;
+  body?: unknown;
 };
 
 type ResponseLike = {
@@ -30,6 +37,23 @@ const getQueryParam = (
   }
 
   return value;
+};
+
+// Vercel hands over a parsed body, the Node server a raw string
+const parseJsonBody = (body: unknown): Record<string, unknown> => {
+  if (typeof body === "string") {
+    try {
+      const parsed: unknown = JSON.parse(body);
+      return typeof parsed === "object" && parsed !== null
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof body === "object" && body !== null
+    ? (body as Record<string, unknown>)
+    : {};
 };
 
 const getBaseUrl = (req: RequestLike): string => {
@@ -52,7 +76,10 @@ export default async function handler(
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization",
+    );
     res.status(204).send("");
     return;
   }
@@ -63,17 +90,24 @@ export default async function handler(
   // Serve robots.txt without authentication
   if (pathname === "/robots.txt") {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.status(200).send("User-agent: *\nDisallow: /reader\nDisallow: /article\nDisallow: /\n");
+    res
+      .status(200)
+      .send(
+        "User-agent: *\nDisallow: /reader\nDisallow: /article\nDisallow: /\n",
+      );
     return;
   }
 
   // 2. Authentication Check
-  const queryPassword = getQueryParam(req.query?.password) || url.searchParams.get("password");
+  const queryPassword =
+    getQueryParam(req.query?.password) || url.searchParams.get("password");
   let isAuthenticated = queryPassword === "Test@123";
 
   if (!isAuthenticated) {
-    const authHeaderRaw = req.headers["authorization"];
-    const authHeader = Array.isArray(authHeaderRaw) ? authHeaderRaw[0] : authHeaderRaw;
+    const authHeaderRaw = req.headers.authorization;
+    const authHeader = Array.isArray(authHeaderRaw)
+      ? authHeaderRaw[0]
+      : authHeaderRaw;
     if (authHeader) {
       const match = authHeader.match(/^Basic\s+(.*)$/i);
       if (match) {
@@ -99,7 +133,8 @@ export default async function handler(
 
   // 3. Reader Mode API Route
   if (pathname === "/reader" || pathname === "/article") {
-    const targetUrl = getQueryParam(req.query?.url) || url.searchParams.get("url");
+    const targetUrl =
+      getQueryParam(req.query?.url) || url.searchParams.get("url");
     if (!targetUrl) {
       res.status(400).json({ error: "Missing url parameter" });
       return;
@@ -120,6 +155,40 @@ export default async function handler(
         }`,
       });
     }
+    return;
+  }
+
+  // Web push routes
+  if (pathname === "/push/config") {
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).json(getPushConfig());
+    return;
+  }
+
+  if (pathname === "/push/subscribe" && req.method === "POST") {
+    const body = parseJsonBody(req.body);
+    try {
+      const isNew = addSubscription(body.subscription);
+      if (isNew && body.welcome === true) {
+        await sendWelcomeNotification(
+          body.subscription as Parameters<typeof sendWelcomeNotification>[0],
+        );
+      }
+      res.status(200).json({ success: true });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
+
+  if (pathname === "/push/unsubscribe" && req.method === "POST") {
+    const body = parseJsonBody(req.body);
+    if (typeof body.endpoint === "string") {
+      removeSubscription(body.endpoint);
+    }
+    res.status(200).json({ success: true });
     return;
   }
 
@@ -155,7 +224,8 @@ export default async function handler(
 
   // Mark All As Read API Route
   if (pathname === "/mark-all-read") {
-    const linksParam = getQueryParam(req.query?.links) || url.searchParams.get("links");
+    const linksParam =
+      getQueryParam(req.query?.links) || url.searchParams.get("links");
     if (!linksParam) {
       res.status(400).json({ error: "Missing links parameter" });
       return;
@@ -207,7 +277,10 @@ export default async function handler(
 
   let news;
   try {
-    news = baseFeed === "feed" ? await fetchAllFeeds() : await fetchFeedNews(baseFeed);
+    news =
+      baseFeed === "feed"
+        ? await fetchAllFeeds()
+        : await fetchFeedNews(baseFeed);
   } catch (error) {
     res.status(500).json({
       error: `Failed to load news for ${feed}: ${error instanceof Error ? error.message : String(error)}`,
@@ -245,5 +318,7 @@ export default async function handler(
     `public, s-maxage=${FOUR_HOURS_IN_SECONDS}, stale-while-revalidate=3600`,
   );
   res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
-  res.status(200).send(renderRssFeed(feed, filteredNews, getBaseUrl(req), isDirect));
+  res
+    .status(200)
+    .send(renderRssFeed(feed, filteredNews, getBaseUrl(req), isDirect));
 }
