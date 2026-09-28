@@ -5,7 +5,9 @@ const SHELL_CACHE = `tldr-shell-${VERSION}`;
 const PAGE_CACHE = `tldr-pages-${VERSION}`;
 const READER_CACHE = `tldr-reader-${VERSION}`;
 const FONT_CACHE = `tldr-fonts-${VERSION}`;
-const CACHES = [SHELL_CACHE, PAGE_CACHE, READER_CACHE, FONT_CACHE];
+// Not versioned: holds settings the pages hand over, like the access password
+const SETTINGS_CACHE = "tldr-settings";
+const CACHES = [SHELL_CACHE, PAGE_CACHE, READER_CACHE, FONT_CACHE, SETTINGS_CACHE];
 
 const SHELL_ASSETS = [
   "/offline.html",
@@ -201,14 +203,40 @@ self.addEventListener("push", (event) => {
   );
 });
 
-const markReadFromNotification = (link) =>
-  fetch(`/mark-read?link=${encodeURIComponent(link)}`, {
-    method: "POST",
-    credentials: "same-origin",
-  }).catch(() => {});
+// Pages that were opened with ?password= pass it on, so URLs built here authenticate too
+const PASSWORD_KEY = "/__settings/password";
+
+self.addEventListener("message", (event) => {
+  const { type, password } = event.data || {};
+  if (type !== "auth" || typeof password !== "string") return;
+  event.waitUntil(
+    caches.open(SETTINGS_CACHE).then((cache) => cache.put(PASSWORD_KEY, new Response(password))),
+  );
+});
+
+const withPassword = async (path) => {
+  const url = new URL(path, self.location.origin);
+  const stored = await caches.match(PASSWORD_KEY, { cacheName: SETTINGS_CACHE });
+  const password = stored ? await stored.text() : "";
+  if (password && !url.searchParams.has("password")) {
+    url.searchParams.set("password", password);
+  }
+  return url.href;
+};
+
+const markReadFromNotification = async (link) => {
+  try {
+    await fetch(await withPassword(`/mark-read?link=${encodeURIComponent(link)}`), {
+      method: "POST",
+      credentials: "same-origin",
+    });
+  } catch (error) {
+    // Best effort: the article still opens
+  }
+};
 
 const openInApp = async (url) => {
-  const target = new URL(url, self.location.origin).href;
+  const target = await withPassword(url);
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   const existing = windows.find((client) => client.url === target) || windows[0];
   if (existing) {

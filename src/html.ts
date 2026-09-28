@@ -1374,6 +1374,13 @@ export const renderHtmlFeed = (
             if (!btn || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
 
             const password = new URLSearchParams(window.location.search).get('password');
+            // The service worker builds the URLs for notification taps, so it needs the password as well
+            const shareAuth = () => {
+                const worker = navigator.serviceWorker.controller;
+                if (password && worker) worker.postMessage({ type: 'auth', password });
+            };
+            shareAuth();
+            navigator.serviceWorker.addEventListener('controllerchange', shareAuth);
             const withPassword = (path) => password ? path + '?password=' + encodeURIComponent(password) : path;
             const postJson = (path, body) => fetch(withPassword(path), {
                 method: 'POST',
