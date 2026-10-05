@@ -534,6 +534,39 @@ export const renderHtmlFeed = (
             }
         }
 
+        /* Selected article item styling for split view */
+        .feed-item.is-selected {
+            border-color: var(--accent-color) !important;
+            box-shadow: 0 0 0 1px var(--accent-color), 0 0 16px var(--accent-glow) !important;
+            background-color: #1a2234 !important;
+            opacity: 1 !important;
+            filter: none !important;
+            transform: none !important;
+        }
+
+        .feed-item.is-selected .feed-link {
+            background-color: #1a2234 !important;
+        }
+
+        .feed-item.is-selected .feed-item-title {
+            color: var(--accent-color) !important;
+        }
+
+        .feed-item.is-selected:not(.swiping-right):not(.swiping-left)::before {
+            content: "" !important;
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background-color: var(--accent-color);
+            border-radius: 4px 0 0 4px;
+            box-shadow: 0 0 10px var(--accent-color);
+            opacity: 1 !important;
+            z-index: 3;
+            transform: none !important;
+        }
+
         .feed-link {
             text-decoration: none;
             color: inherit;
@@ -653,6 +686,303 @@ export const renderHtmlFeed = (
             font-size: 0.68rem;
             color: var(--text-muted);
         }
+
+        /* App layout container */
+        .app-layout {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .feed-pane {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .reader-pane {
+            display: none;
+        }
+
+        #split-toggle-btn {
+            display: none;
+        }
+
+        /* Large screens split view */
+        @media (min-width: 900px) {
+            #split-toggle-btn {
+                display: flex;
+            }
+
+            .feed-pane {
+                flex: 0 0 380px;
+                max-width: 440px;
+                min-width: 320px;
+                border-right: 1px solid var(--border-color);
+                transition: flex-basis 0.2s ease, max-width 0.2s ease;
+            }
+
+            @media (min-width: 1280px) {
+                .feed-pane {
+                    flex: 0 0 420px;
+                    max-width: 480px;
+                }
+            }
+
+            .reader-pane {
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                min-width: 0;
+                height: 100%;
+                background-color: var(--bg-color);
+                position: relative;
+                overflow: hidden;
+            }
+
+            .new-articles-pill {
+                left: 190px;
+                transform: translate(-50%, -12px);
+            }
+            .new-articles-pill.is-visible {
+                transform: translate(-50%, 0);
+            }
+
+            /* Closed split view state */
+            .app-layout.split-closed .feed-pane {
+                flex: 1;
+                max-width: 760px;
+                margin: 0 auto;
+                border-right: none;
+            }
+
+            .app-layout.split-closed .reader-pane {
+                display: none;
+            }
+
+            .app-layout.split-closed .new-articles-pill {
+                left: 50%;
+            }
+        }
+
+        #split-toggle-btn.is-on {
+            color: var(--accent-color);
+            border-color: rgba(56, 189, 248, 0.3);
+            background: var(--accent-glow);
+        }
+
+        /* Reader pane close button */
+        .reader-pane-close-btn {
+            position: absolute;
+            top: 12px;
+            right: 14px;
+            z-index: 20;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            border-radius: 6px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .reader-pane-close-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        /* Reader pane empty state */
+        .reader-empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px 24px;
+            color: var(--text-secondary);
+            user-select: none;
+        }
+
+        .reader-empty-icon {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: rgba(56, 189, 248, 0.08);
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+
+        .reader-empty-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .reader-empty-desc {
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            max-width: 360px;
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+
+        .reader-shortcuts-hint {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .reader-shortcuts-hint kbd {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-family: inherit;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+        }
+
+        /* Reader loading skeleton */
+        .reader-loading-state {
+            flex: 1;
+            padding: 40px calc(24px + env(safe-area-inset-right, 0px)) 60px calc(24px + env(safe-area-inset-left, 0px));
+            max-width: 740px;
+            margin: 0 auto;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-sizing: border-box;
+        }
+
+        .skeleton-pill {
+            width: 90px;
+            height: 22px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.06);
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
+
+        .skeleton-title {
+            height: 28px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            width: 85%;
+            margin-top: 14px;
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
+
+        .skeleton-title.short {
+            width: 60%;
+            margin-top: 8px;
+        }
+
+        .skeleton-meta {
+            height: 16px;
+            width: 160px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            margin-top: 10px;
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
+
+        .skeleton-line {
+            height: 16px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.06);
+            width: 100%;
+            margin-bottom: 12px;
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
+
+        .skeleton-line.short { width: 75%; }
+        .skeleton-line.medium { width: 90%; }
+        .skeleton-space { height: 16px; }
+
+        @keyframes skeleton-pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 0.8; }
+        }
+
+        .reader-loading-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            margin-top: 16px;
+        }
+
+        .reader-loading-spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(56, 189, 248, 0.2);
+            border-top-color: var(--accent-color);
+            border-radius: 50%;
+            animation: ptr-spin 0.8s linear infinite;
+        }
+
+        /* Reader iframe */
+        .reader-frame-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .reader-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+            display: block;
+            transition: opacity 0.2s ease;
+        }
+
+        .reader-frame.is-loading {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .reader-error-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+        }
+
+        .reader-error-state h3 {
+            font-size: 1.1rem;
+            color: #f87171;
+            margin-bottom: 8px;
+        }
+
+        .reader-error-state p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
     </style>
 </head>
 <body data-generated="${Date.now()}">
@@ -664,6 +994,12 @@ export const renderHtmlFeed = (
                 <p>Aktuelle Artikel aus dem ${feedName === "leadership" ? "Leadership in Tech" : "TLDR"} Feed</p>
             </div>
             <div class="header-actions">
+                <button id="split-toggle-btn" class="header-action-btn is-on" type="button" title="Split View schließen" aria-label="Split View umschalten" onclick="toggleSplitView()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="18" height="18" x="3" y="3" rx="2"/>
+                        <line x1="12" y1="3" x2="12" y2="21"/>
+                    </svg>
+                </button>
                 <button id="push-toggle-btn" class="header-action-btn" type="button" title="Push-Benachrichtigungen aktivieren" aria-pressed="false" hidden>
                     <svg class="bell-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M10.268 21a2 2 0 0 0 3.464 0"/>
@@ -699,7 +1035,9 @@ export const renderHtmlFeed = (
         </div>
     </div>
     <button class="new-articles-pill" type="button">Neue Artikel</button>
-    <main class="feed-list">
+    <div class="app-layout">
+        <div class="feed-pane">
+            <main class="feed-list">
         ${sortedPosts
           .map((post, index) => {
             const read = isRead(post.link);
@@ -729,10 +1067,59 @@ export const renderHtmlFeed = (
         </article>`;
           })
           .join("\n")}
-    </main>
-    <footer id="feed-updated">
-        Stand: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
-    </footer>
+            </main>
+            <footer id="feed-updated">
+                Stand: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+            </footer>
+        </div>
+        <aside class="reader-pane" id="reader-pane" aria-label="Reader-Ansicht">
+            <button type="button" class="reader-pane-close-btn" id="reader-pane-close-btn" title="Reader schließen (Esc)" aria-label="Reader schließen" onclick="closeSplitView()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+            <div class="reader-empty-state" id="reader-empty-state">
+                <div class="reader-empty-icon">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                    </svg>
+                </div>
+                <h3 class="reader-empty-title">Kein Artikel ausgewählt</h3>
+                <p class="reader-empty-desc">Wähle einen Artikel aus der Liste aus, um die Reader-Ansicht direkt hier zu öffnen.</p>
+                <div class="reader-shortcuts-hint">
+                    <span><kbd>J</kbd> / <kbd>K</kbd> Navigieren</span>
+                    <span><kbd>O</kbd> Original öffnen</span>
+                    <span><kbd>Esc</kbd> Schließen</span>
+                </div>
+            </div>
+            <div class="reader-loading-state" id="reader-loading-state" hidden>
+                <div class="reader-skeleton-header">
+                    <div class="skeleton-pill"></div>
+                    <div class="skeleton-title"></div>
+                    <div class="skeleton-title short"></div>
+                    <div class="skeleton-meta"></div>
+                </div>
+                <div class="reader-skeleton-body">
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line short"></div>
+                    <div class="skeleton-space"></div>
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line medium"></div>
+                </div>
+                <div class="reader-loading-indicator">
+                    <div class="reader-loading-spinner"></div>
+                    <span>Artikel wird geladen...</span>
+                </div>
+            </div>
+            <div class="reader-frame-container" id="reader-frame-container">
+                <iframe id="reader-frame" class="reader-frame" src="about:blank" title="Reader View"></iframe>
+            </div>
+        </aside>
+    </div>
     <script>
         const feedList = document.querySelector('main.feed-list');
         const SCROLL_KEY = 'tldr-scroll:' + location.pathname + location.search;
@@ -743,6 +1130,7 @@ export const renderHtmlFeed = (
                 const url = new URL(link.href, window.location.origin);
                 const currentParams = new URLSearchParams(window.location.search);
                 currentParams.forEach((value, key) => {
+                    if (link.classList.contains('tab-btn') && key === 'url') return;
                     if (!url.searchParams.has(key)) {
                         url.searchParams.set(key, value);
                     }
@@ -1130,6 +1518,221 @@ export const renderHtmlFeed = (
             });
         }
 
+        // Split view handling for desktop / large screens
+        let currentSelectedLink = null;
+        let readerLoadTimer = null;
+
+        function isLargeScreen() {
+            return window.matchMedia('(min-width: 900px)').matches;
+        }
+
+        function getReaderUrl(originalLink) {
+            const currentParams = new URLSearchParams(window.location.search);
+            const password = currentParams.get('password');
+            const params = new URLSearchParams();
+            params.set('url', originalLink);
+            params.set('embedded', '1');
+            if (password) {
+                params.set('password', password);
+            }
+            return '/reader?' + params.toString();
+        }
+
+        function openArticleInSplitView(link, cardElement) {
+            if (!link) return;
+
+            currentSelectedLink = link;
+
+            // Highlight selected card
+            document.querySelectorAll('.feed-item.is-selected').forEach(el => {
+                el.classList.remove('is-selected');
+            });
+            if (cardElement) {
+                cardElement.classList.add('is-selected');
+                cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            // Mark as read locally and remotely
+            const linkEl = cardElement ? cardElement.querySelector('.feed-link') : null;
+            if (linkEl) {
+                markAsRead(link, linkEl);
+            } else {
+                saveLocalReadStatus([link], true);
+                postReadStatus('/mark-read', 'link', link).catch(() => {});
+            }
+
+            // Ensure split layout is open
+            const layout = document.querySelector('.app-layout');
+            if (layout) {
+                layout.classList.remove('split-closed');
+            }
+            const toggleBtn = document.getElementById('split-toggle-btn');
+            if (toggleBtn) {
+                toggleBtn.classList.add('is-on');
+                toggleBtn.setAttribute('aria-pressed', 'true');
+                toggleBtn.title = 'Split View schließen';
+            }
+
+            // Update URL without page reload
+            try {
+                const urlObj = new URL(window.location.href);
+                urlObj.searchParams.set('url', link);
+                window.history.replaceState(null, '', urlObj.pathname + urlObj.search);
+            } catch (e) {}
+
+            // Update reader pane states
+            const emptyState = document.getElementById('reader-empty-state');
+            const loadingState = document.getElementById('reader-loading-state');
+            const frame = document.getElementById('reader-frame');
+
+            if (emptyState) emptyState.hidden = true;
+            if (loadingState) {
+                loadingState.hidden = false;
+                loadingState.innerHTML = '<div class="reader-skeleton-header">' +
+                    '<div class="skeleton-pill"></div>' +
+                    '<div class="skeleton-title"></div>' +
+                    '<div class="skeleton-title short"></div>' +
+                    '<div class="skeleton-meta"></div>' +
+                    '</div>' +
+                    '<div class="reader-skeleton-body">' +
+                    '<div class="skeleton-line"></div>' +
+                    '<div class="skeleton-line"></div>' +
+                    '<div class="skeleton-line short"></div>' +
+                    '<div class="skeleton-space"></div>' +
+                    '<div class="skeleton-line"></div>' +
+                    '<div class="skeleton-line"></div>' +
+                    '<div class="skeleton-line medium"></div>' +
+                    '</div>' +
+                    '<div class="reader-loading-indicator">' +
+                    '<div class="reader-loading-spinner"></div>' +
+                    '<span>Artikel wird geladen...</span>' +
+                    '</div>';
+            }
+
+            if (frame) {
+                frame.classList.add('is-loading');
+
+                const renderError = () => {
+                    if (loadingState) {
+                        loadingState.innerHTML = '<div class="reader-error-state">' +
+                            '<h3>Laden fehlgeschlagen</h3>' +
+                            '<p>Der Artikel konnte im Reader Mode nicht geladen werden.</p>' +
+                            '<div style="display: flex; gap: 8px; justify-content: center; margin-top: 12px;">' +
+                            '<button type="button" class="tab-btn" onclick="retryCurrentArticle()">Erneut versuchen</button>' +
+                            '<a href="' + encodeURI(link) + '" target="_blank" rel="noopener noreferrer" class="tab-btn active">Original öffnen ↗</a>' +
+                            '</div>' +
+                            '</div>';
+                    }
+                };
+
+                if (readerLoadTimer) clearTimeout(readerLoadTimer);
+                readerLoadTimer = setTimeout(() => {
+                    if (loadingState && !loadingState.hidden) {
+                        renderError();
+                    }
+                }, 12000);
+
+                frame.onload = () => {
+                    if (readerLoadTimer) clearTimeout(readerLoadTimer);
+                    if (loadingState) loadingState.hidden = true;
+                    frame.classList.remove('is-loading');
+                };
+
+                frame.onerror = () => {
+                    if (readerLoadTimer) clearTimeout(readerLoadTimer);
+                    renderError();
+                };
+
+                frame.src = getReaderUrl(link);
+            }
+        }
+
+        function retryCurrentArticle() {
+            if (currentSelectedLink) {
+                const card = Array.from(document.querySelectorAll('.feed-item'))
+                    .find(item => item.dataset.link === currentSelectedLink);
+                openArticleInSplitView(currentSelectedLink, card);
+            }
+        }
+
+        function closeSplitView() {
+            currentSelectedLink = null;
+            document.querySelectorAll('.feed-item.is-selected').forEach(el => {
+                el.classList.remove('is-selected');
+            });
+
+            if (readerLoadTimer) clearTimeout(readerLoadTimer);
+            const emptyState = document.getElementById('reader-empty-state');
+            const loadingState = document.getElementById('reader-loading-state');
+            const frame = document.getElementById('reader-frame');
+
+            if (loadingState) loadingState.hidden = true;
+            if (emptyState) emptyState.hidden = false;
+            if (frame) {
+                frame.src = 'about:blank';
+                frame.classList.remove('is-loading');
+            }
+
+            try {
+                const urlObj = new URL(window.location.href);
+                urlObj.searchParams.delete('url');
+                window.history.replaceState(null, '', urlObj.pathname + urlObj.search);
+            } catch (e) {}
+        }
+
+        function toggleSplitView() {
+            const layout = document.querySelector('.app-layout');
+            if (!layout) return;
+            const isClosed = layout.classList.toggle('split-closed');
+            const toggleBtn = document.getElementById('split-toggle-btn');
+            if (toggleBtn) {
+                toggleBtn.classList.toggle('is-on', !isClosed);
+                toggleBtn.setAttribute('aria-pressed', isClosed ? 'false' : 'true');
+                toggleBtn.title = isClosed ? 'Split View öffnen' : 'Split View schließen';
+            }
+        }
+
+        function handleKeyboardNavigation(key) {
+            if (!isLargeScreen()) return;
+
+            const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+            if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
+
+            const items = Array.from(document.querySelectorAll('.feed-item'));
+            if (items.length === 0) return;
+
+            const currentIndex = items.findIndex(item => item.classList.contains('is-selected'));
+
+            if (key === 'j' || key === 'ArrowDown') {
+                const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+                const target = items[nextIndex];
+                if (target && target.dataset.link) {
+                    openArticleInSplitView(target.dataset.link, target);
+                }
+            } else if (key === 'k' || key === 'ArrowUp') {
+                const prevIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+                const target = items[prevIndex];
+                if (target && target.dataset.link) {
+                    openArticleInSplitView(target.dataset.link, target);
+                }
+            } else if (key === 'o' || key === 'Enter') {
+                if (currentIndex >= 0 && items[currentIndex] && items[currentIndex].dataset.link) {
+                    window.open(items[currentIndex].dataset.link, '_blank', 'noopener,noreferrer');
+                }
+            } else if (key === 'Escape') {
+                closeSplitView();
+            } else if (key === 'm') {
+                if (currentIndex >= 0 && items[currentIndex] && items[currentIndex].dataset.link) {
+                    const item = items[currentIndex];
+                    if (item.classList.contains('is-read')) {
+                        markAsUnreadFromSwipe(item);
+                    } else {
+                        markAsRead(item.dataset.link, item.querySelector('.feed-link'));
+                    }
+                }
+            }
+        }
+
         // Navigations inside the app get a matching view transition
         function initNavigation() {
             const tabs = Array.from(document.querySelectorAll('.tab-btn'));
@@ -1147,14 +1750,49 @@ export const renderHtmlFeed = (
 
             // Delegated so refreshed items are covered as well
             feedList.addEventListener('click', (e) => {
+                if (e.target.closest('.more-link')) return;
+
                 const link = e.target.closest('.feed-link');
-                if (!link || e.defaultPrevented || link.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+                if (!link) return;
+
                 const card = link.closest('.feed-item');
+                if (!card) return;
+
+                const articleUrl = card.dataset.link;
+                if (!articleUrl) return;
+
+                if (isLargeScreen()) {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+                    e.preventDefault();
+                    openArticleInSplitView(articleUrl, card);
+                    return;
+                }
+
+                if (e.defaultPrevented || link.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey) return;
                 window.tldrApp.clearSharedNames();
                 window.tldrApp.nameShared(card.querySelector('.feed-item-title'), 'article-title');
                 window.tldrApp.setTransition({ type: 'push', link: card.dataset.link });
                 saveScrollPosition();
                 window.tldrApp.startNavigation();
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (['j', 'k', 'o', 'm', 'Escape', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
+                    if (['j', 'k', 'ArrowDown', 'ArrowUp'].includes(e.key) && isLargeScreen() && !e.metaKey && !e.ctrlKey) {
+                        e.preventDefault();
+                        handleKeyboardNavigation(e.key);
+                    } else if (['o', 'm', 'Escape'].includes(e.key) && isLargeScreen() && !e.metaKey && !e.ctrlKey) {
+                        handleKeyboardNavigation(e.key);
+                    }
+                }
+            });
+
+            window.addEventListener('message', (e) => {
+                if (e.data && e.data.type === 'reader-keydown') {
+                    handleKeyboardNavigation(e.data.key);
+                } else if (e.data && e.data.type === 'close-reader') {
+                    closeSplitView();
+                }
             });
         }
 
@@ -1222,6 +1860,11 @@ export const renderHtmlFeed = (
                 });
                 prepareLinks(feedList);
                 applyLocalReadStatus();
+                if (currentSelectedLink) {
+                    const selectedItem = Array.from(feedList.querySelectorAll('.feed-item'))
+                        .find(item => item.dataset.link === currentSelectedLink);
+                    if (selectedItem) selectedItem.classList.add('is-selected');
+                }
                 initSwipeGestures(items);
                 initMoreToggle(feedList);
             };
@@ -1493,6 +2136,16 @@ export const renderHtmlFeed = (
                 }
             });
             setTimeout(refreshIfStale, 1200);
+
+            // Auto-open article in split view if requested via url parameter on large screens
+            const initialArticleUrl = new URLSearchParams(window.location.search).get('url');
+            if (initialArticleUrl && isLargeScreen()) {
+                const card = Array.from(document.querySelectorAll('.feed-item'))
+                    .find(item => item.dataset.link === initialArticleUrl);
+                if (card) {
+                    openArticleInSplitView(initialArticleUrl, card);
+                }
+            }
         }
 
         if (document.readyState === 'loading') {

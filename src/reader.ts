@@ -640,6 +640,23 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             padding-left: 8px;
         }
 
+        html.is-embedded #back-btn {
+            display: none !important;
+        }
+
+        html.is-embedded #close-btn,
+        html.is-embedded #open-tab-btn {
+            display: inline-flex !important;
+        }
+
+        html.is-embedded #app-splash {
+            display: none !important;
+        }
+
+        html.is-embedded footer {
+            padding-bottom: 24px;
+        }
+
         .btn-primary {
             background-color: var(--accent-glow);
             color: var(--accent-color);
@@ -828,6 +845,9 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 Zurück
             </button>
+            <button class="btn icon-btn" type="button" id="close-btn" aria-label="Schließen" title="Schließen (Esc)" hidden>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
         </div>
         <div class="header-title" aria-hidden="true">${escapeHtml(article.title)}</div>
         <div class="nav-actions">
@@ -836,6 +856,9 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             </button>
             <a href="${escapeHtmlAttr(article.originalUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary icon-btn" aria-label="Original öffnen" title="Original öffnen">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+            </a>
+            <a href="${escapeHtmlAttr(`/reader?url=${encodeURIComponent(article.originalUrl)}`)}" target="_blank" rel="noopener noreferrer" class="btn icon-btn" id="open-tab-btn" aria-label="In neuem Tab öffnen" title="In neuem Tab öffnen" hidden>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </a>
         </div>
         <div class="reading-progress"></div>
@@ -904,6 +927,29 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
         }
 
         document.getElementById('back-btn').addEventListener('click', () => goBack('pop'));
+
+        const isEmbedded = window.self !== window.top || urlParams.get('embedded') === '1';
+        if (isEmbedded) {
+            document.documentElement.classList.add('is-embedded');
+            const closeBtn = document.getElementById('close-btn');
+            if (closeBtn) {
+                closeBtn.hidden = false;
+                closeBtn.addEventListener('click', () => {
+                    window.parent.postMessage({ type: 'close-reader' }, '*');
+                });
+            }
+            const openTabBtn = document.getElementById('open-tab-btn');
+            if (openTabBtn) {
+                openTabBtn.hidden = false;
+            }
+            window.addEventListener('keydown', (e) => {
+                const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+                if (activeTag === 'input' || activeTag === 'textarea') return;
+                if (['j', 'k', 'o', 'm', 'Escape'].includes(e.key) && !e.metaKey && !e.ctrlKey) {
+                    window.parent.postMessage({ type: 'reader-keydown', key: e.key }, '*');
+                }
+            });
+        }
 
         // Native share sheet where available
         const shareBtn = document.getElementById('share-btn');

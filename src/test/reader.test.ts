@@ -21,6 +21,11 @@ describe("Reader Mode", () => {
     expect(html).toContain("This is a test paragraph in reader mode.");
     expect(html).toContain("Original öffnen");
     expect(html).toContain("Reader Mode");
+    expect(html).toContain('id="close-btn"');
+    expect(html).toContain('id="open-tab-btn"');
+    expect(html).toContain("html.is-embedded");
+    expect(html).toContain("reader-keydown");
+    expect(html).toContain("close-reader");
   });
 
   it("should handle error when fetching invalid article URL gracefully", async () => {

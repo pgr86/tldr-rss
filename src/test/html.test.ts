@@ -198,6 +198,28 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain("initPullToRefresh()");
   });
 
+  it("should render split view layout and reader pane on large screens", async () => {
+    await writeHtmlFeed("test", testPosts);
+
+    const content = await readFile("./site/test.html", "utf8");
+
+    expect(content).toContain('<div class="app-layout">');
+    expect(content).toContain('<div class="feed-pane">');
+    expect(content).toContain('<aside class="reader-pane" id="reader-pane"');
+    expect(content).toContain('<iframe id="reader-frame"');
+    expect(content).toContain('<button id="split-toggle-btn"');
+    expect(content).toContain('<button type="button" class="reader-pane-close-btn"');
+    expect(content).toContain('<div class="reader-empty-state" id="reader-empty-state">');
+    expect(content).toContain('<div class="reader-loading-state" id="reader-loading-state"');
+    expect(content).toContain("@media (min-width: 900px)");
+    expect(content).toContain(".feed-item.is-selected");
+    expect(content).toContain("openArticleInSplitView");
+    expect(content).toContain("closeSplitView");
+    expect(content).toContain("toggleSplitView");
+    expect(content).toContain("handleKeyboardNavigation");
+    expect(content).toContain("isLargeScreen()");
+  });
+
   it("should throw error if no posts are provided", async () => {
     await expect(writeHtmlFeed("test", [])).rejects.toThrow(
       "No posts found for test",
