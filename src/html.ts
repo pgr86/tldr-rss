@@ -536,35 +536,28 @@ export const renderHtmlFeed = (
 
         /* Selected article item styling for split view */
         .feed-item.is-selected {
-            border-color: var(--accent-color) !important;
-            box-shadow: 0 0 0 1px var(--accent-color), 0 0 16px var(--accent-glow) !important;
-            background-color: #1a2234 !important;
+            border-color: rgba(56, 189, 248, 0.4) !important;
+            border-left: 3px solid var(--accent-color) !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+            background-color: #172133 !important;
             opacity: 1 !important;
             filter: none !important;
             transform: none !important;
         }
 
         .feed-item.is-selected .feed-link {
-            background-color: #1a2234 !important;
+            background-color: #172133 !important;
         }
 
         .feed-item.is-selected .feed-item-title {
             color: var(--accent-color) !important;
         }
 
-        .feed-item.is-selected:not(.swiping-right):not(.swiping-left)::before {
-            content: "" !important;
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            background-color: var(--accent-color);
-            border-radius: 4px 0 0 4px;
-            box-shadow: 0 0 10px var(--accent-color);
-            opacity: 1 !important;
-            z-index: 3;
-            transform: none !important;
+        @media (hover: hover) {
+            .feed-item.is-selected:hover {
+                transform: none;
+                border-left-color: var(--accent-color) !important;
+            }
         }
 
         .feed-link {
@@ -802,9 +795,18 @@ export const renderHtmlFeed = (
             transform: scale(1.05);
         }
 
+        /* Ensure hidden attribute always wins over display: flex */
+        [hidden],
+        .reader-empty-state[hidden],
+        .reader-loading-state[hidden],
+        .reader-pane [hidden] {
+            display: none !important;
+        }
+
         /* Reader pane empty state */
         .reader-empty-state {
-            flex: 1;
+            position: absolute;
+            inset: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -813,6 +815,8 @@ export const renderHtmlFeed = (
             padding: 40px 24px;
             color: var(--text-secondary);
             user-select: none;
+            background: var(--bg-color);
+            z-index: 5;
         }
 
         .reader-empty-icon {
@@ -864,7 +868,8 @@ export const renderHtmlFeed = (
 
         /* Reader loading skeleton */
         .reader-loading-state {
-            flex: 1;
+            position: absolute;
+            inset: 0;
             padding: 40px calc(24px + env(safe-area-inset-right, 0px)) 60px calc(24px + env(safe-area-inset-left, 0px));
             max-width: 740px;
             margin: 0 auto;
@@ -873,6 +878,9 @@ export const renderHtmlFeed = (
             flex-direction: column;
             gap: 20px;
             box-sizing: border-box;
+            background: var(--bg-color);
+            z-index: 10;
+            overflow-y: auto;
         }
 
         .skeleton-pill {
@@ -1538,6 +1546,18 @@ export const renderHtmlFeed = (
             return '/reader?' + params.toString();
         }
 
+        function revealReader(url) {
+            if (url && currentSelectedLink && url !== currentSelectedLink) return;
+            if (readerLoadTimer) {
+                clearTimeout(readerLoadTimer);
+                readerLoadTimer = null;
+            }
+            const loadingState = document.getElementById('reader-loading-state');
+            if (loadingState) loadingState.hidden = true;
+            const frame = document.getElementById('reader-frame');
+            if (frame) frame.classList.remove('is-loading');
+        }
+
         function openArticleInSplitView(link, cardElement) {
             if (!link) return;
 
@@ -1614,6 +1634,7 @@ export const renderHtmlFeed = (
 
                 const renderError = () => {
                     if (loadingState) {
+                        loadingState.hidden = false;
                         loadingState.innerHTML = '<div class="reader-error-state">' +
                             '<h3>Laden fehlgeschlagen</h3>' +
                             '<p>Der Artikel konnte im Reader Mode nicht geladen werden.</p>' +
@@ -1627,15 +1648,14 @@ export const renderHtmlFeed = (
 
                 if (readerLoadTimer) clearTimeout(readerLoadTimer);
                 readerLoadTimer = setTimeout(() => {
-                    if (loadingState && !loadingState.hidden) {
+                    const currentLoading = document.getElementById('reader-loading-state');
+                    if (currentLoading && !currentLoading.hidden) {
                         renderError();
                     }
                 }, 12000);
 
                 frame.onload = () => {
-                    if (readerLoadTimer) clearTimeout(readerLoadTimer);
-                    if (loadingState) loadingState.hidden = true;
-                    frame.classList.remove('is-loading');
+                    revealReader(link);
                 };
 
                 frame.onerror = () => {
@@ -1661,7 +1681,10 @@ export const renderHtmlFeed = (
                 el.classList.remove('is-selected');
             });
 
-            if (readerLoadTimer) clearTimeout(readerLoadTimer);
+            if (readerLoadTimer) {
+                clearTimeout(readerLoadTimer);
+                readerLoadTimer = null;
+            }
             const emptyState = document.getElementById('reader-empty-state');
             const loadingState = document.getElementById('reader-loading-state');
             const frame = document.getElementById('reader-frame');
@@ -1788,7 +1811,9 @@ export const renderHtmlFeed = (
             });
 
             window.addEventListener('message', (e) => {
-                if (e.data && e.data.type === 'reader-keydown') {
+                if (e.data && e.data.type === 'reader-ready') {
+                    revealReader(e.data.url);
+                } else if (e.data && e.data.type === 'reader-keydown') {
                     handleKeyboardNavigation(e.data.key);
                 } else if (e.data && e.data.type === 'close-reader') {
                     closeSplitView();

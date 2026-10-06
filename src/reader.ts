@@ -949,6 +949,9 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
                     window.parent.postMessage({ type: 'reader-keydown', key: e.key }, '*');
                 }
             });
+            try {
+                window.parent.postMessage({ type: 'reader-ready', url: articleLink }, '*');
+            } catch (e) {}
         }
 
         // Native share sheet where available

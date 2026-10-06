@@ -26,6 +26,7 @@ describe("Reader Mode", () => {
     expect(html).toContain("html.is-embedded");
     expect(html).toContain("reader-keydown");
     expect(html).toContain("close-reader");
+    expect(html).toContain("reader-ready");
   });
 
   it("should handle error when fetching invalid article URL gracefully", async () => {

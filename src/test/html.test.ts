@@ -214,10 +214,13 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain("@media (min-width: 900px)");
     expect(content).toContain(".feed-item.is-selected");
     expect(content).toContain("openArticleInSplitView");
+    expect(content).toContain("revealReader");
+    expect(content).toContain("reader-ready");
     expect(content).toContain("closeSplitView");
     expect(content).toContain("toggleSplitView");
     expect(content).toContain("handleKeyboardNavigation");
     expect(content).toContain("isLargeScreen()");
+    expect(content).toContain(".reader-loading-state[hidden]");
   });
 
   it("should throw error if no posts are provided", async () => {
