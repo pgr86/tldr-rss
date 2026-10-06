@@ -173,32 +173,34 @@ export const renderHtmlFeed = (
             position: sticky;
             top: 0;
             z-index: 10;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            padding: calc(12px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px));
+            padding: calc(7px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 7px calc(14px + env(safe-area-inset-left, 0px));
             view-transition-name: app-header;
         }
 
-        .header-top {
-            display: flex;
+        .header-content {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
             align-items: center;
-            justify-content: space-between;
+            gap: 12px;
+            width: 100%;
         }
 
-        .header-title-container {
+        .header-brand {
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            flex-shrink: 0;
         }
 
         header h1 {
-            font-size: 1.1rem;
+            font-size: 0.95rem;
             font-weight: 700;
             letter-spacing: -0.02em;
             color: var(--text-primary);
             display: flex;
             align-items: center;
             gap: 6px;
+            margin: 0;
+            white-space: nowrap;
         }
 
         header h1::before {
@@ -209,12 +211,7 @@ export const renderHtmlFeed = (
             background-color: var(--accent-color);
             border-radius: 50%;
             box-shadow: 0 0 8px var(--accent-color);
-        }
-
-        header p {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            margin-top: 1px;
+            flex-shrink: 0;
         }
 
         .badge {
@@ -232,7 +229,8 @@ export const renderHtmlFeed = (
         .header-actions {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
+            flex-shrink: 0;
         }
 
         .header-action-btn {
@@ -240,8 +238,8 @@ export const renderHtmlFeed = (
             border: 1px solid var(--border-color);
             color: var(--text-secondary);
             border-radius: 6px;
-            width: 32px;
-            height: 32px;
+            width: 30px;
+            height: 30px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -286,15 +284,17 @@ export const renderHtmlFeed = (
             pointer-events: none;
         }
 
-        /* Feed tabs navigation */
+        /* Feed tabs navigation in the center */
         .feed-tabs-container {
-            width: 100%;
+            min-width: 0;
             overflow-x: auto;
             -ms-overflow-style: none;  /* IE and Edge */
             scrollbar-width: none;  /* Firefox */
             cursor: grab;
             user-select: none;
             -webkit-user-select: none;
+            display: flex;
+            align-items: center;
         }
         .feed-tabs-container.is-dragging {
             cursor: grabbing;
@@ -305,17 +305,18 @@ export const renderHtmlFeed = (
 
         .feed-tabs {
             display: flex;
-            gap: 6px;
-            padding-bottom: 4px;
+            gap: 5px;
+            padding: 2px 0;
+            align-items: center;
             width: max-content;
         }
 
         .tab-btn {
             text-decoration: none;
             color: var(--text-secondary);
-            font-size: 0.78rem;
+            font-size: 0.76rem;
             font-weight: 500;
-            padding: 5px 11px;
+            padding: 4px 10px;
             border-radius: 20px;
             background-color: rgba(255, 255, 255, 0.04);
             border: 1px solid var(--border-color);
@@ -323,6 +324,29 @@ export const renderHtmlFeed = (
             white-space: nowrap;
             user-select: none;
             -webkit-user-drag: none;
+        }
+
+        @media (max-width: 767px) {
+            header {
+                padding: calc(6px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) 6px calc(12px + env(safe-area-inset-left, 0px));
+            }
+
+            .header-content {
+                grid-template-columns: 1fr auto;
+                row-gap: 6px;
+            }
+
+            .header-brand {
+                grid-column: 1;
+            }
+
+            .header-actions {
+                grid-column: 2;
+            }
+
+            .feed-tabs-container {
+                grid-column: 1 / -1;
+            }
         }
 
         @media (hover: hover) {
@@ -996,10 +1020,14 @@ export const renderHtmlFeed = (
 <body data-generated="${Date.now()}">
     ${renderPwaBodyStart()}
     <header>
-        <div class="header-top">
-            <div class="header-title-container">
+        <div class="header-content">
+            <div class="header-brand">
                 <h1>${feedName === "leadership" ? "Leadership in Tech" : `TLDR ${formattedFeedName}`}</h1>
-                <p>Aktuelle Artikel aus dem ${feedName === "leadership" ? "Leadership in Tech" : "TLDR"} Feed</p>
+            </div>
+            <div class="feed-tabs-container">
+                <nav class="feed-tabs">
+                    ${tabsHtml}
+                </nav>
             </div>
             <div class="header-actions">
                 <button id="split-toggle-btn" class="header-action-btn is-on" type="button" title="Split View schließen" aria-label="Split View umschalten" onclick="toggleSplitView()">
@@ -1027,11 +1055,6 @@ export const renderHtmlFeed = (
                     </svg>
                 </button>
             </div>
-        </div>
-        <div class="feed-tabs-container">
-            <nav class="feed-tabs">
-                ${tabsHtml}
-            </nav>
         </div>
     </header>
     <div class="ptr-anchor">
@@ -1081,13 +1104,13 @@ export const renderHtmlFeed = (
             </footer>
         </div>
         <aside class="reader-pane" id="reader-pane" aria-label="Reader-Ansicht">
-            <button type="button" class="reader-pane-close-btn" id="reader-pane-close-btn" title="Reader schließen (Esc)" aria-label="Reader schließen" onclick="closeSplitView()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"/>
-                    <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-            </button>
             <div class="reader-empty-state" id="reader-empty-state">
+                <button type="button" class="reader-pane-close-btn" id="reader-pane-close-btn" title="Split View schließen (Esc)" aria-label="Split View schließen" onclick="closeSplitView()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
                 <div class="reader-empty-icon">
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>

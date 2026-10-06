@@ -640,6 +640,11 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             padding-left: 8px;
         }
 
+        html.is-embedded header {
+            padding: 5px 12px;
+            min-height: 38px;
+        }
+
         html.is-embedded #back-btn {
             display: none !important;
         }
@@ -647,6 +652,70 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
         html.is-embedded #close-btn,
         html.is-embedded #open-tab-btn {
             display: inline-flex !important;
+        }
+
+        html.is-embedded .icon-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+        }
+
+        html.is-embedded .icon-btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        html.is-embedded .nav-actions {
+            gap: 6px;
+        }
+
+        html.is-embedded .embedded-source-badge {
+            display: inline-flex !important;
+            font-size: 0.72rem;
+            color: var(--accent-color);
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        html.is-embedded .reader-container {
+            padding: 14px calc(18px + env(safe-area-inset-right, 0px)) 40px calc(18px + env(safe-area-inset-left, 0px));
+        }
+
+        html.is-embedded .article-header {
+            margin-bottom: 14px;
+            padding-bottom: 12px;
+        }
+
+        html.is-embedded .article-title {
+            font-size: 1.35rem;
+            line-height: 1.3;
+            margin-bottom: 8px;
+        }
+
+        html.is-embedded .domain-badge {
+            margin-bottom: 8px;
+            padding: 2px 8px;
+            font-size: 0.7rem;
+        }
+
+        html.is-embedded .article-meta {
+            font-size: 0.75rem;
+            gap: 8px;
+        }
+
+        html.is-embedded .lead-image {
+            max-height: 240px;
+            margin-bottom: 16px;
+            border-radius: 8px;
+        }
+
+        html.is-embedded .article-body {
+            font-size: 1rem;
+            line-height: 1.65;
         }
 
         html.is-embedded #app-splash {
@@ -845,9 +914,7 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 Zurück
             </button>
-            <button class="btn icon-btn" type="button" id="close-btn" aria-label="Schließen" title="Schließen (Esc)" hidden>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
+            <span class="embedded-source-badge" hidden>${escapeHtml(article.domain)}</span>
         </div>
         <div class="header-title" aria-hidden="true">${escapeHtml(article.title)}</div>
         <div class="nav-actions">
@@ -860,6 +927,9 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             <a href="${escapeHtmlAttr(`/reader?url=${encodeURIComponent(article.originalUrl)}`)}" target="_blank" rel="noopener noreferrer" class="btn icon-btn" id="open-tab-btn" aria-label="In neuem Tab öffnen" title="In neuem Tab öffnen" hidden>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </a>
+            <button class="btn icon-btn" type="button" id="close-btn" aria-label="Reader schließen (Esc)" title="Reader schließen (Esc)" hidden>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
         </div>
         <div class="reading-progress"></div>
     </header>
