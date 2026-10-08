@@ -5,8 +5,13 @@ import { logger } from "./util";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// Alias that always points to the newest Claude Haiku: fast and cheap enough for summaries
-export const DEFAULT_SUMMARY_MODEL = "~anthropic/claude-haiku-latest";
+// Free models, tried in order: free slugs get rate limited or retired without notice.
+// Gemma is strong in German; openrouter/free picks whichever free model is available.
+export const DEFAULT_SUMMARY_MODELS = [
+  "google/gemma-4-31b-it:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "openrouter/free",
+];
 
 // The reader assumes 200 words per minute, so this stays below one minute
 export const SUMMARY_MAX_WORDS = 180;
@@ -18,6 +23,7 @@ export type ArticleSummary = {
   summaryHtml: string;
   wordCount: number;
   readingSeconds: number;
+  model: string;
 };
 
 const SYSTEM_PROMPT = `Du fasst Artikel für einen News-Reader zusammen.
@@ -30,8 +36,14 @@ const SYSTEM_PROMPT = `Du fasst Artikel für einen News-Reader zusammen.
 export const isSummaryEnabled = (): boolean =>
   Boolean(process.env.OPENROUTER_API_KEY);
 
-const getModel = (): string =>
-  process.env.OPENROUTER_MODEL || DEFAULT_SUMMARY_MODEL;
+// OPENROUTER_MODEL takes one model id or a comma separated fallback list
+export const getSummaryModels = (): string[] => {
+  const configured = (process.env.OPENROUTER_MODEL || "")
+    .split(",")
+    .map((model) => model.trim())
+    .filter(Boolean);
+  return configured.length > 0 ? configured : DEFAULT_SUMMARY_MODELS;
+};
 
 const escapeHtml = (text: string): string =>
   text
@@ -79,15 +91,28 @@ const countWords = (text: string): number =>
 
 const inFlight = new Map<string, Promise<ArticleSummary>>();
 
+const describeError = (error: unknown): string => {
+  if (axios.isAxiosError(error)) {
+    const apiMessage = (
+      error.response?.data as { error?: { message?: string } }
+    )?.error?.message;
+    const status = error.response?.status;
+    return `${status ? `${status} ` : ""}${apiMessage || error.message}`;
+  }
+  return error instanceof Error ? error.message : String(error);
+};
+
 const requestSummary = async (
+  model: string,
   title: string,
   text: string,
 ): Promise<ArticleSummary> => {
   const response = await axios.post(
     OPENROUTER_URL,
     {
-      model: getModel(),
-      max_tokens: 600,
+      model,
+      // Leaves room for reasoning models, which think before they answer
+      max_tokens: 2000,
       temperature: 0.2,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
@@ -98,7 +123,7 @@ const requestSummary = async (
       ],
     },
     {
-      timeout: 45000,
+      timeout: 40000,
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
@@ -107,17 +132,43 @@ const requestSummary = async (
     },
   );
 
-  const content: unknown = response.data?.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || !content.trim()) {
+  const rawContent: unknown = response.data?.choices?.[0]?.message?.content;
+  const content =
+    typeof rawContent === "string"
+      ? rawContent.replace(/<think>[\s\S]*?<\/think>/g, "").trim()
+      : "";
+  if (!content) {
     throw new Error("Das Modell hat keine Zusammenfassung geliefert");
   }
 
+  const usedModel: unknown = response.data?.model;
   const wordCount = countWords(content);
   return {
     summaryHtml: renderSummaryHtml(content),
     wordCount,
     readingSeconds: Math.max(5, Math.round((wordCount / 200) * 60)),
+    model: typeof usedModel === "string" ? usedModel : model,
   };
+};
+
+const requestWithFallback = async (
+  url: string,
+  title: string,
+  text: string,
+): Promise<ArticleSummary> => {
+  const errors: string[] = [];
+  for (const model of getSummaryModels()) {
+    try {
+      return await requestSummary(model, title, text);
+    } catch (error) {
+      const message = describeError(error);
+      logger.warn(`Summary with ${model} failed for ${url}: ${message}`);
+      errors.push(message);
+      // A bad key will not work with the next model either
+      if (axios.isAxiosError(error) && error.response?.status === 401) break;
+    }
+  }
+  throw new Error(errors[errors.length - 1] || "Kein Modell konfiguriert");
 };
 
 export const summarizeArticle = async (
@@ -129,7 +180,7 @@ export const summarizeArticle = async (
     throw new Error("OPENROUTER_API_KEY ist nicht gesetzt");
   }
 
-  const cacheKey = `summary:${getModel()}:${url}`;
+  const cacheKey = `summary:${getSummaryModels().join(",")}:${url}`;
   const cached = getCache<ArticleSummary>(cacheKey);
   if (cached) return cached;
 
@@ -137,23 +188,10 @@ export const summarizeArticle = async (
   const pending = inFlight.get(cacheKey);
   if (pending) return await pending;
 
-  const promise = requestSummary(title, text)
+  const promise = requestWithFallback(url, title, text)
     .then((summary) => {
       setCache(cacheKey, summary);
       return summary;
-    })
-    .catch((error: unknown) => {
-      const status = axios.isAxiosError(error) ? error.response?.status : null;
-      const message = axios.isAxiosError(error)
-        ? (error.response?.data as { error?: { message?: string } })?.error
-            ?.message || error.message
-        : error instanceof Error
-          ? error.message
-          : String(error);
-      logger.warn(
-        `Summary failed for ${url}${status ? ` (${status})` : ""}: ${message}`,
-      );
-      throw new Error(message);
     })
     .finally(() => inFlight.delete(cacheKey));
 

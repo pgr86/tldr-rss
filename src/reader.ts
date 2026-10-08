@@ -1231,6 +1231,7 @@ export const renderReaderHtml = (
                     // summaryHtml is escaped on the server
                     summaryBody.innerHTML = data.summaryHtml;
                     summaryMeta.textContent = '≈ ' + data.readingSeconds + ' Sek. Lesezeit';
+                    if (data.model) summaryMeta.title = 'Modell: ' + data.model;
                     summaryState = 'done';
                     setSummaryVisible(true);
                     window.tldrApp.haptic();

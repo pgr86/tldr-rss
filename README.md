@@ -58,7 +58,13 @@ extracted (paywall notice), the button is hidden.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | – | Enables the button. Create a key at openrouter.ai/keys |
-| `OPENROUTER_MODEL` | `~anthropic/claude-haiku-latest` | Any OpenRouter model id, e.g. `google/gemini-3-flash-preview` |
+| `OPENROUTER_MODEL` | `google/gemma-4-31b-it:free,nvidia/nemotron-3-super-120b-a12b:free,openrouter/free` | One OpenRouter model id or a comma separated list, tried in order until one answers |
+
+The default uses only free models, so summaries cost nothing. OpenRouter limits free models
+to 20 requests per minute and 50 per day (1,000 per day once you have bought $10 of credits),
+and free models are retired or rate limited from time to time. That is why the list falls
+back to the next model and finally to `openrouter/free`, which picks any free model that is
+currently available. For steady quality, set a paid model such as `~anthropic/claude-haiku-latest`.
 
 ## Vercel deployment
 

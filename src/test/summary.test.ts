@@ -1,7 +1,12 @@
 import axios from "axios";
 
 import * as cache from "../cache";
-import { renderSummaryHtml, summarizeArticle } from "../summary";
+import {
+  DEFAULT_SUMMARY_MODELS,
+  getSummaryModels,
+  renderSummaryHtml,
+  summarizeArticle,
+} from "../summary";
 
 const ARTICLE_TEXT = "Ein langer Artikeltext. ".repeat(40);
 
@@ -70,14 +75,56 @@ describe("summarizeArticle", () => {
       { headers: Record<string, string> },
     ];
     expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect((body as unknown as { model: string }).model).toBe(
+      DEFAULT_SUMMARY_MODELS[0],
+    );
     expect(body.messages[0].content).toContain("Deutsch");
     expect(body.messages[1].content).toContain("Titel: Titel");
     expect(config.headers.Authorization).toBe("Bearer test-key");
     expect(cache.setCache).toHaveBeenCalled();
   });
 
+  it("falls back to the next free model when one fails", async () => {
+    const post = jest
+      .spyOn(axios, "post")
+      .mockRejectedValueOnce(new Error("rate limited"))
+      .mockResolvedValueOnce({
+        data: {
+          model: "nvidia/nemotron-3-super-120b-a12b:free",
+          choices: [
+            { message: { content: "<think>hmm</think>Kurz gesagt.\n- Eins" } },
+          ],
+        },
+      });
+
+    const summary = await summarizeArticle(
+      "https://example.com/b",
+      "Titel",
+      ARTICLE_TEXT,
+    );
+
+    const models = post.mock.calls.map(
+      (call) => (call[1] as { model: string }).model,
+    );
+    expect(models).toEqual(DEFAULT_SUMMARY_MODELS.slice(0, 2));
+    expect(summary.model).toBe("nvidia/nemotron-3-super-120b-a12b:free");
+    expect(summary.summaryHtml).not.toContain("hmm");
+  });
+
+  it("uses the models from OPENROUTER_MODEL", () => {
+    process.env.OPENROUTER_MODEL = "a/one, b/two";
+    expect(getSummaryModels()).toEqual(["a/one", "b/two"]);
+    delete process.env.OPENROUTER_MODEL;
+    expect(getSummaryModels()).toEqual(DEFAULT_SUMMARY_MODELS);
+  });
+
   it("serves a cached summary without calling the API", async () => {
-    const cached = { summaryHtml: "<p>x</p>", wordCount: 1, readingSeconds: 5 };
+    const cached = {
+      summaryHtml: "<p>x</p>",
+      wordCount: 1,
+      readingSeconds: 5,
+      model: "x",
+    };
     jest.spyOn(cache, "getCache").mockReturnValue(cached);
     const post = jest.spyOn(axios, "post");
 
