@@ -86,8 +86,8 @@ const server = http.createServer(async (req, res) => {
     let size = 0;
     for await (const chunk of req) {
       size += (chunk as Buffer).length;
-      // Push subscriptions are tiny; anything bigger isn't meant for us
-      if (size > 64 * 1024) break;
+      // Push subscriptions are tiny, article text for /summary is capped at 40k chars
+      if (size > 256 * 1024) break;
       chunks.push(chunk as Buffer);
     }
     rawBody = Buffer.concat(chunks).toString("utf-8");

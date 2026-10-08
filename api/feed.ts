@@ -10,6 +10,7 @@ import {
 import { fetchReaderArticle, renderReaderHtml } from "../src/reader";
 import { markAllAsRead, markAsRead, markAsUnread } from "../src/readStatus";
 import { renderRssFeed } from "../src/rss";
+import { isSummaryEnabled, summarizeArticle } from "../src/summary";
 
 const FOUR_HOURS_IN_SECONDS = 60 * 60 * 4;
 const ONE_DAY_IN_SECONDS = 60 * 60 * 24;
@@ -147,12 +148,48 @@ export default async function handler(
         "Cache-Control",
         `public, s-maxage=${ONE_DAY_IN_SECONDS}, stale-while-revalidate=86400`,
       );
-      res.status(200).send(renderReaderHtml(article));
+      res
+        .status(200)
+        .send(renderReaderHtml(article, { summarize: isSummaryEnabled() }));
     } catch (error) {
       res.status(500).json({
         error: `Failed to load article in reader mode: ${
           error instanceof Error ? error.message : String(error)
         }`,
+      });
+    }
+    return;
+  }
+
+  // AI summary of the article text the reader already shows
+  if (pathname === "/summary" && req.method === "POST") {
+    res.setHeader("Cache-Control", "no-store");
+    if (!isSummaryEnabled()) {
+      res.status(503).json({ error: "Zusammenfassungen sind nicht aktiviert" });
+      return;
+    }
+
+    const body = parseJsonBody(req.body);
+    const { url: articleUrl, title, text } = body;
+    if (typeof articleUrl !== "string" || typeof text !== "string") {
+      res.status(400).json({ error: "Missing url or text" });
+      return;
+    }
+    if (text.trim().length < 200) {
+      res.status(422).json({ error: "Der Artikel ist zu kurz für eine Zusammenfassung" });
+      return;
+    }
+
+    try {
+      const summary = await summarizeArticle(
+        articleUrl,
+        typeof title === "string" ? title : "",
+        text,
+      );
+      res.status(200).json(summary);
+    } catch (error) {
+      res.status(502).json({
+        error: error instanceof Error ? error.message : String(error),
       });
     }
     return;

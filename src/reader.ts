@@ -3,6 +3,7 @@ import axios from "axios";
 import { JSDOM } from "jsdom";
 
 import { PWA_BODY_END, renderPwaBodyStart, renderPwaHead } from "./pwa";
+import { MAX_ARTICLE_CHARS } from "./summary";
 import { logger } from "./util";
 
 export type ArticleData = {
@@ -13,6 +14,8 @@ export type ArticleData = {
   leadImage?: string;
   contentHtml: string;
   readingTimeMinutes: number;
+  // Set when no extractor got through and only the paywall notice is shown
+  isFallback?: boolean;
 };
 
 const cleanHtmlForJsdom = (html: string): string =>
@@ -313,6 +316,7 @@ export const fetchReaderArticle = async (
       domain,
     )}</strong>) schützt ihre Inhalte mit einem aktiven Paywall- oder Bot-Schutz (z.&nbsp;B. Cloudflare/DataDome WAF) und verhindert das automatische serverseitige Auslesen im Reader Mode.</p>`,
     readingTimeMinutes: 1,
+    isFallback: true,
   };
 };
 
@@ -477,7 +481,17 @@ function parseRawHtmlToArticle(
   };
 }
 
-export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE html>
+export type ReaderOptions = {
+  // Shows the "Zusammenfassen" button (needs a configured summary provider)
+  summarize?: boolean;
+};
+
+export const renderReaderHtml = (
+  article: ArticleData,
+  { summarize = false }: ReaderOptions = {},
+): string => {
+  const canSummarize = summarize && !article.isFallback;
+  return `<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -896,6 +910,116 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
             color: var(--text-secondary);
         }
 
+        .article-meta > span {
+            white-space: nowrap;
+        }
+
+        .summary-btn {
+            margin-left: auto;
+            flex-shrink: 0;
+            padding: 5px 12px;
+            border-radius: 20px;
+        }
+
+        .summary-btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .summary-btn.is-loading svg {
+            animation: summary-spin 1s linear infinite;
+        }
+
+        .summary-btn:disabled {
+            cursor: progress;
+        }
+
+        @keyframes summary-spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .summary-card {
+            margin-bottom: 24px;
+            padding: 16px 18px;
+            border-radius: 12px;
+            background: linear-gradient(180deg, rgba(56, 189, 248, 0.08), rgba(56, 189, 248, 0.03));
+            border: 1px solid rgba(56, 189, 248, 0.25);
+        }
+
+        .summary-card-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--accent-color);
+        }
+
+        .summary-meta {
+            font-weight: 500;
+            text-transform: none;
+            letter-spacing: 0;
+            color: var(--text-muted);
+        }
+
+        .summary-body {
+            font-size: 1rem;
+            line-height: 1.65;
+            color: #e5e7eb;
+        }
+
+        .summary-body p {
+            margin-bottom: 0.7em;
+        }
+
+        .summary-body ul {
+            padding-left: 20px;
+        }
+
+        .summary-body li {
+            margin-bottom: 0.4em;
+        }
+
+        .summary-body li:last-child,
+        .summary-body p:last-child {
+            margin-bottom: 0;
+        }
+
+        .summary-body strong {
+            color: var(--text-primary);
+        }
+
+        .summary-error {
+            color: #fca5a5;
+        }
+
+        .summary-skeleton {
+            height: 0.9em;
+            margin: 0.55em 0;
+            border-radius: 4px;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+            background-size: 200% 100%;
+            animation: summary-shimmer 1.4s ease-in-out infinite;
+        }
+
+        @keyframes summary-shimmer {
+            from { background-position: 100% 0; }
+            to { background-position: -100% 0; }
+        }
+
+        html.is-embedded .summary-card {
+            margin-bottom: 16px;
+            padding: 12px 14px;
+        }
+
+        html.is-embedded .summary-body {
+            font-size: 0.92rem;
+        }
+
         footer {
             background-color: var(--card-bg);
             border-top: 1px solid var(--border-color);
@@ -942,8 +1066,28 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
                 <div class="article-meta">
                     ${article.date ? `<span>${escapeHtml(article.date)}</span> •` : ""}
                     <span>~${article.readingTimeMinutes} Min. Lesezeit</span>
+                    ${
+                      canSummarize
+                        ? `<button class="btn btn-primary summary-btn" type="button" id="summary-btn" aria-controls="summary-card" aria-expanded="false">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+                        <span class="summary-btn-label">Zusammenfassen</span>
+                    </button>`
+                        : ""
+                    }
                 </div>
             </div>
+
+            ${
+              canSummarize
+                ? `<section class="summary-card" id="summary-card" aria-live="polite" hidden>
+                <div class="summary-card-header">
+                    <span>Zusammenfassung</span>
+                    <span class="summary-meta" id="summary-meta"></span>
+                </div>
+                <div class="summary-body" id="summary-body"></div>
+            </section>`
+                : ""
+            }
 
             ${
               article.leadImage
@@ -1033,6 +1177,75 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
                     title: ${JSON.stringify(article.title).replace(/</g, "\\u003c")},
                     url: ${JSON.stringify(article.originalUrl).replace(/</g, "\\u003c")}
                 }).catch(() => {});
+            });
+        }
+
+        // AI summary on demand (src/summary.ts), loaded once and then toggled
+        const summaryBtn = document.getElementById('summary-btn');
+        if (summaryBtn) {
+            const summaryCard = document.getElementById('summary-card');
+            const summaryBody = document.getElementById('summary-body');
+            const summaryMeta = document.getElementById('summary-meta');
+            const summaryLabel = summaryBtn.querySelector('.summary-btn-label');
+            let summaryState = 'idle';
+
+            const setSummaryVisible = (visible) => {
+                summaryCard.hidden = !visible;
+                summaryBtn.setAttribute('aria-expanded', String(visible));
+                if (summaryState === 'done') {
+                    summaryLabel.textContent = visible ? 'Ausblenden' : 'Zusammenfassung';
+                }
+            };
+
+            summaryBtn.addEventListener('click', async () => {
+                if (summaryState === 'loading') return;
+                if (summaryState === 'done') {
+                    setSummaryVisible(summaryCard.hidden);
+                    return;
+                }
+
+                summaryState = 'loading';
+                summaryBtn.disabled = true;
+                summaryBtn.classList.add('is-loading');
+                summaryLabel.textContent = 'Lädt…';
+                summaryMeta.textContent = '';
+                summaryBody.innerHTML = '<div class="summary-skeleton" style="width: 92%"></div><div class="summary-skeleton" style="width: 78%"></div><div class="summary-skeleton" style="width: 85%"></div>';
+                setSummaryVisible(true);
+
+                try {
+                    const articleBody = document.querySelector('.article-body');
+                    const response = await fetch('/summary' + (password ? '?password=' + encodeURIComponent(password) : ''), {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            url: ${JSON.stringify(article.originalUrl).replace(/</g, "\\u003c")},
+                            title: ${JSON.stringify(article.title).replace(/</g, "\\u003c")},
+                            text: (articleBody ? articleBody.innerText : '').slice(0, ${MAX_ARTICLE_CHARS})
+                        })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok || !data.summaryHtml) {
+                        throw new Error(data.error || 'Server antwortet mit ' + response.status);
+                    }
+                    // summaryHtml is escaped on the server
+                    summaryBody.innerHTML = data.summaryHtml;
+                    summaryMeta.textContent = '≈ ' + data.readingSeconds + ' Sek. Lesezeit';
+                    summaryState = 'done';
+                    setSummaryVisible(true);
+                    window.tldrApp.haptic();
+                } catch (error) {
+                    summaryState = 'idle';
+                    summaryLabel.textContent = 'Erneut versuchen';
+                    summaryBody.innerHTML = '';
+                    const message = document.createElement('p');
+                    message.className = 'summary-error';
+                    message.textContent = 'Zusammenfassung fehlgeschlagen: ' + (error && error.message ? error.message : error);
+                    summaryBody.appendChild(message);
+                } finally {
+                    summaryBtn.disabled = false;
+                    summaryBtn.classList.remove('is-loading');
+                }
             });
         }
 
@@ -1128,6 +1341,7 @@ export const renderReaderHtml = (article: ArticleData): string => `<!DOCTYPE htm
     ${PWA_BODY_END}
 </body>
 </html>`;
+};
 
 function escapeHtml(text: string): string {
   const map: Record<string, string> = {

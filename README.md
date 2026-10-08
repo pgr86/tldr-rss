@@ -46,6 +46,20 @@ Vercel there is no process that could send pushes, so the bell stays hidden ther
 Subscriptions and the queue live in `.cache/push_state.json`. Mount `.cache` as a volume
 so they survive redeploys.
 
+## AI summaries
+
+With `OPENROUTER_API_KEY` set, the reader shows a **Zusammenfassen** button under the
+article title. It sends the extracted article text to [OpenRouter](https://openrouter.ai)
+and shows a German summary that reads in under a minute (one key sentence plus 3–5 bullets,
+at most ~180 words). Summaries are cached per article and model in `.cache/`, so each
+article is only summarized once. Without the key, or when the article could not be
+extracted (paywall notice), the button is hidden.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | – | Enables the button. Create a key at openrouter.ai/keys |
+| `OPENROUTER_MODEL` | `~anthropic/claude-haiku-latest` | Any OpenRouter model id, e.g. `google/gemini-3-flash-preview` |
+
 ## Vercel deployment
 
 This repository is set up to run on Vercel using dynamic serverless generation.

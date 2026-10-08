@@ -27,6 +27,28 @@ describe("Reader Mode", () => {
     expect(html).toContain("reader-keydown");
     expect(html).toContain("close-reader");
     expect(html).toContain("reader-ready");
+    expect(html).not.toContain('id="summary-btn"');
+  });
+
+  it("should offer a summary only when enabled and the article was extracted", () => {
+    const article = {
+      title: "Test Reader Article",
+      domain: "example.com",
+      originalUrl: "https://example.com/article",
+      contentHtml: "<p>This is a test paragraph in reader mode.</p>",
+      readingTimeMinutes: 2,
+    };
+
+    const html = renderReaderHtml(article, { summarize: true });
+    expect(html).toContain('id="summary-btn"');
+    expect(html).toContain("Zusammenfassen");
+    expect(html).toContain('id="summary-card"');
+
+    const fallback = renderReaderHtml(
+      { ...article, isFallback: true },
+      { summarize: true },
+    );
+    expect(fallback).not.toContain('id="summary-btn"');
   });
 
   it("should handle error when fetching invalid article URL gracefully", async () => {
