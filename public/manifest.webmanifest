@@ -4,6 +4,7 @@
   "short_name": "TLDR",
   "description": "Die TLDR Newsletter als schneller, werbefreier Reader.",
   "lang": "de",
+  "start_url": "/tech.html",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
