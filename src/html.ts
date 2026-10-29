@@ -1205,9 +1205,13 @@ export const renderHtmlFeed = (
             const { title, minutes } = splitReadingTime(post.title);
             const host = sourceHost(post.link);
             const metaParts = [
-              host ? `<span class="feed-source">${escapeHtml(host)}</span>` : "",
+              host
+                ? `<span class="feed-source">${escapeHtml(host)}</span>`
+                : "",
               `<time datetime="${new Date(post.date).toISOString()}">${escapeHtml(formatDate(post.date))}</time>`,
-              minutes ? `<span class="feed-reading-time">${minutes} Min.</span>` : "",
+              minutes
+                ? `<span class="feed-reading-time">${minutes} Min.</span>`
+                : "",
             ].filter(Boolean);
             return `        <article class="feed-item ${read ? "is-read" : ""}" style="--i: ${index}" data-link="${escapeHtmlAttr(post.link)}">
             <a href="${escapeHtmlAttr(readerHref)}" onclick="markAsRead(this.closest('.feed-item').dataset.link, this)" target="_blank" class="feed-link" rel="noopener noreferrer">

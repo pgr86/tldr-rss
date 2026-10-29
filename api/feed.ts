@@ -2,6 +2,7 @@ import { getCache } from "../src/cache";
 import { FEEDS, isSupportedFeed } from "../src/config";
 import { fetchAllFeeds, fetchFeedNews } from "../src/feed";
 import { renderHtmlFeed } from "../src/html";
+import { linkHash } from "../src/postMeta";
 import {
   addSubscription,
   getPushConfig,
@@ -9,7 +10,6 @@ import {
   sendWelcomeNotification,
 } from "../src/push";
 import { fetchReaderArticle, renderReaderHtml } from "../src/reader";
-import { linkHash } from "../src/postMeta";
 import {
   isRead,
   markAllAsRead,
@@ -224,7 +224,9 @@ export default async function handler(
       return;
     }
     if (text.trim().length < 200) {
-      res.status(422).json({ error: "Der Artikel ist zu kurz für eine Zusammenfassung" });
+      res
+        .status(422)
+        .json({ error: "Der Artikel ist zu kurz für eine Zusammenfassung" });
       return;
     }
 
