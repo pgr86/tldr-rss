@@ -1,6 +1,7 @@
 import { readFile, unlink } from "fs/promises";
 
 import { renderHtmlFeed, writeHtmlFeed } from "../html";
+import { linkHash } from "../postMeta";
 
 describe("HTML Feed Generation", () => {
   const testPosts = [
@@ -309,6 +310,42 @@ describe("HTML Feed Generation", () => {
       const html = renderHtmlFeed("test", posts);
       expect(html).toContain("window.self !== window.top");
       expect(html).toContain("skipTransition()");
+    });
+  });
+  describe("unread counts on tabs", () => {
+    const posts = [
+      {
+        title: "Counted Article",
+        link: "https://example.com/counted",
+        content: "Content",
+        date: new Date("2024-01-15T10:00:00Z").toISOString(),
+      },
+    ];
+
+    it("embeds the hashed links of other feeds", () => {
+      const html = renderHtmlFeed("test", posts, 50, { ai: ["abc"] });
+      expect(html).toContain('id="feed-links"');
+      expect(html).toContain('{"ai":["abc"]}');
+      expect(html).toContain('data-feed="ai"');
+      expect(html).toContain('class="tab-count"');
+    });
+
+    it("embeds an empty map by default", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).toMatch(/id="feed-links">\{\}<\/script>/);
+    });
+
+    it("hashes links in the browser exactly like the server", () => {
+      const html = renderHtmlFeed("test", posts);
+      const source = html.match(/function linkHash\(link\) \{[\s\S]*?\n {8}\}/);
+      expect(source).not.toBeNull();
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const clientHash = new Function(`${source?.[0]}; return linkHash;`)() as (
+        link: string,
+      ) => string;
+      ["https://example.com/a?utm_source=tldr", "https://ex.io/ü"].forEach(
+        (link) => expect(clientHash(link)).toBe(linkHash(link)),
+      );
     });
   });
 });

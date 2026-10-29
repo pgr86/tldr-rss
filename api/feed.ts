@@ -1,3 +1,4 @@
+import { getCache } from "../src/cache";
 import { FEEDS, isSupportedFeed } from "../src/config";
 import { fetchAllFeeds, fetchFeedNews } from "../src/feed";
 import { renderHtmlFeed } from "../src/html";
@@ -8,7 +9,13 @@ import {
   sendWelcomeNotification,
 } from "../src/push";
 import { fetchReaderArticle, renderReaderHtml } from "../src/reader";
-import { markAllAsRead, markAsRead, markAsUnread } from "../src/readStatus";
+import { linkHash } from "../src/postMeta";
+import {
+  isRead,
+  markAllAsRead,
+  markAsRead,
+  markAsUnread,
+} from "../src/readStatus";
 import { renderRssFeed } from "../src/rss";
 import { isSummaryEnabled, summarizeArticle } from "../src/summary";
 
@@ -64,6 +71,41 @@ const getBaseUrl = (req: RequestLike): string => {
   const protocol = forwardedProto || "https";
 
   return `${protocol}://${host}`;
+};
+
+const isSponsored = (title: string): boolean => {
+  const titleLower = title.toLowerCase();
+  return (
+    titleLower.includes("(sponsor)") ||
+    titleLower.includes("(sponsoren)") ||
+    titleLower.includes("(sponsored)")
+  );
+};
+
+const MAX_LIST_ARTICLES = 50;
+
+/**
+ * Hashed links of the unread articles each feed page would list, taken from the cache only
+ * (never fetched here). Feeds without a cache entry are left out and get no count.
+ */
+const collectFeedLinks = (): Record<string, string[]> => {
+  const feedLinks: Record<string, string[]> = {};
+  FEEDS.forEach((feedName) => {
+    const cached = getCache<{ title: string; link: string; date: string }[]>(
+      `feed_news:${feedName}`,
+    );
+    if (!Array.isArray(cached)) return;
+    feedLinks[feedName] = cached
+      .filter((item) => !isSponsored(item.title))
+      .sort(
+        (first, second) =>
+          new Date(second.date).getTime() - new Date(first.date).getTime(),
+      )
+      .slice(0, MAX_LIST_ARTICLES)
+      .filter((item) => !isRead(item.link))
+      .map((item) => linkHash(item.link));
+  });
+  return feedLinks;
 };
 
 export default async function handler(
@@ -332,14 +374,7 @@ export default async function handler(
   }
 
   // 4. Safety net filtering of sponsored news (even if they were previously cached)
-  const filteredNews = news.filter((item) => {
-    const titleLower = item.title.toLowerCase();
-    return !(
-      titleLower.includes("(sponsor)") ||
-      titleLower.includes("(sponsoren)") ||
-      titleLower.includes("(sponsored)")
-    );
-  });
+  const filteredNews = news.filter((item) => !isSponsored(item.title));
 
   if (filteredNews.length === 0) {
     res.status(404).json({
@@ -352,7 +387,9 @@ export default async function handler(
     // The HTML view contains per-user read status, so it must not be served from a shared CDN cache
     res.setHeader("Cache-Control", "private, no-cache");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.status(200).send(renderHtmlFeed(baseFeed, filteredNews));
+    res
+      .status(200)
+      .send(renderHtmlFeed(baseFeed, filteredNews, 50, collectFeedLinks()));
     return;
   }
 

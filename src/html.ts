@@ -75,10 +75,14 @@ export const getDisplayName = (feed: string): string => {
   return feed.charAt(0).toUpperCase() + feed.slice(1);
 };
 
+/**
+ * @param feedLinks - Hashed links (see linkHash) of the other feeds, for the unread counts on the tabs
+ */
 export const renderHtmlFeed = (
   feedName: string,
   posts: Post[],
   maxArticles = 50,
+  feedLinks: Record<string, string[]> = {},
 ): string => {
   if (posts.length === 0) {
     throw new Error(`No posts found for ${feedName}`);
@@ -98,7 +102,7 @@ export const renderHtmlFeed = (
   const tabsHtml = FEEDS.map((f) => {
     const active = f === feedName;
     const displayName = getDisplayName(f);
-    return `<a href="/${f}.html" class="tab-btn ${active ? "active" : ""}">${displayName}</a>`;
+    return `<a href="/${f}.html" class="tab-btn ${active ? "active" : ""}" data-feed="${f}">${displayName}<span class="tab-count" hidden></span></a>`;
   }).join("\n                ");
 
   // Generate responsive, beautiful HTML optimized for Vivaldi sidebar and panels
@@ -374,6 +378,14 @@ export const renderHtmlFeed = (
 
         .tab-btn:active {
             transform: scale(0.95);
+        }
+
+        .tab-count {
+            margin-left: 4px;
+            font-size: 0.68rem;
+            font-weight: 500;
+            opacity: 0.6;
+            font-variant-numeric: tabular-nums;
         }
 
         .tab-btn.active {
@@ -1268,6 +1280,7 @@ export const renderHtmlFeed = (
             </div>
         </aside>
     </div>
+    <script type="application/json" id="feed-links">${JSON.stringify(feedLinks).replace(/</g, "\\u003c")}</script>
     <script>
         const feedList = document.querySelector('main.feed-list');
         const SCROLL_KEY = 'tldr-scroll:' + location.pathname + location.search;
@@ -1347,6 +1360,44 @@ export const renderHtmlFeed = (
             if (label) label.textContent = unread === 0 ? 'Alles gelesen' : unread + ' ungelesen';
             const hint = document.getElementById('all-read-hint');
             if (hint) hint.hidden = unread > 0;
+            updateTabCounts(unread);
+        }
+
+        // Same FNV-1a hash as linkHash in src/postMeta.ts
+        function linkHash(link) {
+            let hash = 0x811c9dc5;
+            for (let i = 0; i < link.length; i++) {
+                hash ^= link.charCodeAt(i);
+                hash = Math.imul(hash, 0x01000193);
+            }
+            return (hash >>> 0).toString(36);
+        }
+
+        const FEED_LINKS = (() => {
+            try {
+                return JSON.parse(document.getElementById('feed-links').textContent || '{}');
+            } catch (err) {
+                return {};
+            }
+        })();
+
+        // Unread counts on the tabs: the other feeds come from the server cache as hashed links
+        function updateTabCounts(activeUnread) {
+            const readHashes = new Set();
+            const status = loadLocalReadStatus();
+            Object.keys(status).forEach(link => {
+                if (status[link] === true) readHashes.add(linkHash(link));
+            });
+            document.querySelectorAll('.tab-btn').forEach(tab => {
+                const count = tab.querySelector('.tab-count');
+                if (!count) return;
+                const links = FEED_LINKS[tab.dataset.feed];
+                const unread = tab.classList.contains('active')
+                    ? activeUnread
+                    : (Array.isArray(links) ? links.filter(hash => !readHashes.has(hash)).length : 0);
+                count.textContent = String(unread);
+                count.hidden = unread === 0;
+            });
         }
 
         function updateFeedStand() {

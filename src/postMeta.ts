@@ -25,3 +25,16 @@ export const sourceHost = (link: string): string => {
     return "";
   }
 };
+
+/**
+ * Short FNV-1a hash of an article link. The feed page embeds these for the unread
+ * counts on its tabs; the browser hashes its read-status keys the same way (src/html.ts).
+ */
+export const linkHash = (link: string): string => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < link.length; i++) {
+    hash ^= link.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+};

@@ -1,4 +1,4 @@
-import { sourceHost, splitReadingTime } from "../postMeta";
+import { linkHash, sourceHost, splitReadingTime } from "../postMeta";
 
 describe("splitReadingTime", () => {
   it("moves a trailing reading time out of the title", () => {
@@ -36,5 +36,19 @@ describe("sourceHost", () => {
 
   it("returns an empty string for invalid links", () => {
     expect(sourceHost("not a url")).toBe("");
+  });
+});
+
+describe("linkHash", () => {
+  it("is short, stable and alphanumeric", () => {
+    const hash = linkHash("https://example.com/a?utm_source=tldr");
+    expect(hash).toMatch(/^[0-9a-z]{1,7}$/);
+    expect(linkHash("https://example.com/a?utm_source=tldr")).toBe(hash);
+  });
+
+  it("differs for different links", () => {
+    expect(linkHash("https://example.com/a")).not.toBe(
+      linkHash("https://example.com/b"),
+    );
   });
 });
