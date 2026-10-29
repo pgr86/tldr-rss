@@ -360,6 +360,14 @@ const EARLY_SCRIPT = `
 
             if ('onpagereveal' in window) {
                 window.addEventListener('pagereveal', function (e) {
+                    // Inside the split view the feed page already shows its own loading state:
+                    // no second fade, and the pending transition belongs to the feed page
+                    if (window.self !== window.top) {
+                        if (e.viewTransition) e.viewTransition.skipTransition();
+                        root.classList.add('no-stagger');
+                        reveal(null, false);
+                        return;
+                    }
                     var transition = consumeTransition();
                     if (e.viewTransition) {
                         startTransition(e.viewTransition, transition);

@@ -276,4 +276,39 @@ describe("HTML Feed Generation", () => {
       expect(html).not.toContain("reader-loading-indicator");
     });
   });
+  describe("reader loading", () => {
+    const posts = [
+      {
+        title: "Loading Article",
+        link: "https://example.com/loading",
+        content: "Content",
+        date: new Date("2024-01-15T10:00:00Z").toISOString(),
+      },
+    ];
+
+    it("renders one static skeleton and a separate error state", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).toContain('id="reader-error-state"');
+      expect(html).not.toContain("loadingState.innerHTML");
+      expect(html).not.toContain("Artikel wird geladen");
+    });
+
+    it("dims the previous article and delays the skeleton", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).toContain(".reader-frame.is-stale");
+      expect(html).toContain("SKELETON_DELAY_MS = 200");
+    });
+
+    it("prefetches the next article only through the service worker", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).toContain("function prefetchReader(link)");
+      expect(html).toContain("navigator.serviceWorker.controller");
+    });
+
+    it("skips view transitions inside the embedded reader", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).toContain("window.self !== window.top");
+      expect(html).toContain("skipTransition()");
+    });
+  });
 });

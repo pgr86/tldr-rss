@@ -1078,15 +1078,29 @@ export const renderHtmlFeed = (
             transition: opacity 0.2s ease;
         }
 
+        /* The previous article stays visible, dimmed, until the next one is ready */
+        .reader-frame.is-stale {
+            opacity: 0.45;
+            transition: opacity 0.15s ease;
+        }
+
         .reader-frame.is-loading {
             opacity: 0;
             pointer-events: none;
         }
 
         .reader-error-state {
+            position: absolute;
+            inset: 0;
+            z-index: 11;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             text-align: center;
             padding: 40px 20px;
             color: var(--text-secondary);
+            background: var(--bg-color);
         }
 
         .reader-error-state h3 {
@@ -1248,6 +1262,7 @@ export const renderHtmlFeed = (
                     <div class="skeleton-line medium"></div>
                 </div>
             </div>
+            <div class="reader-error-state" id="reader-error-state" hidden></div>
             <div class="reader-frame-container" id="reader-frame-container">
                 <iframe id="reader-frame" class="reader-frame" src="about:blank" title="Reader View"></iframe>
             </div>
@@ -1675,6 +1690,10 @@ export const renderHtmlFeed = (
         let selectedLink = null;
         let openLink = null;
         let readerLoadTimer = null;
+        let skeletonTimer = null;
+        const SKELETON_DELAY_MS = 200;
+        const prefetchedReaderLinks = new Set();
+        let prefetchInFlight = false;
 
         function isLargeScreen() {
             return window.matchMedia('(min-width: 900px)').matches;
@@ -1717,16 +1736,40 @@ export const renderHtmlFeed = (
             if (card) card.classList.add('is-open');
         }
 
+        function clearReaderTimers() {
+            clearTimeout(readerLoadTimer);
+            clearTimeout(skeletonTimer);
+            readerLoadTimer = null;
+            skeletonTimer = null;
+        }
+
         function revealReader(url) {
             if (url && openLink && url !== openLink) return;
-            if (readerLoadTimer) {
-                clearTimeout(readerLoadTimer);
-                readerLoadTimer = null;
-            }
+            clearReaderTimers();
             const loadingState = document.getElementById('reader-loading-state');
             if (loadingState) loadingState.hidden = true;
             const frame = document.getElementById('reader-frame');
-            if (frame) frame.classList.remove('is-loading');
+            if (frame) frame.classList.remove('is-loading', 'is-stale');
+
+            // Reading on with Space should feel instant: warm up the next article
+            const openCard = findItem(openLink);
+            const items = getItems();
+            const next = openCard ? items[items.indexOf(openCard) + 1] : null;
+            if (next) prefetchReader(next.dataset.link);
+        }
+
+        // Loads a reader page into the service worker cache. Only while a reader is open,
+        // one request at a time: every page runs the full extraction chain on the server.
+        function prefetchReader(link) {
+            if (!link || prefetchInFlight || prefetchedReaderLinks.has(link)) return;
+            if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return;
+            prefetchedReaderLinks.add(link);
+            prefetchInFlight = true;
+            fetch(getReaderUrl(link), { credentials: 'same-origin' })
+                .catch(() => {})
+                .finally(() => {
+                    prefetchInFlight = false;
+                });
         }
 
         function openArticleInSplitView(link, cardElement) {
@@ -1770,64 +1813,45 @@ export const renderHtmlFeed = (
             // Update reader pane states
             const emptyState = document.getElementById('reader-empty-state');
             const loadingState = document.getElementById('reader-loading-state');
+            const errorState = document.getElementById('reader-error-state');
             const frame = document.getElementById('reader-frame');
 
             if (emptyState) emptyState.hidden = true;
-            if (loadingState) {
-                loadingState.hidden = false;
-                loadingState.innerHTML = '<div class="reader-skeleton-header">' +
-                    '<div class="skeleton-pill"></div>' +
-                    '<div class="skeleton-title"></div>' +
-                    '<div class="skeleton-title short"></div>' +
-                    '<div class="skeleton-meta"></div>' +
-                    '</div>' +
-                    '<div class="reader-skeleton-body">' +
-                    '<div class="skeleton-line"></div>' +
-                    '<div class="skeleton-line"></div>' +
-                    '<div class="skeleton-line short"></div>' +
-                    '<div class="skeleton-space"></div>' +
-                    '<div class="skeleton-line"></div>' +
-                    '<div class="skeleton-line"></div>' +
-                    '<div class="skeleton-line medium"></div>' +
-                    '</div>';
-            }
+            if (errorState) errorState.hidden = true;
+            if (!frame) return;
 
-            if (frame) {
+            const renderError = () => {
+                if (openLink !== link) return;
+                clearReaderTimers();
+                if (loadingState) loadingState.hidden = true;
+                frame.classList.remove('is-stale');
                 frame.classList.add('is-loading');
+                if (!errorState) return;
+                errorState.innerHTML = '<h3>Laden fehlgeschlagen</h3>' +
+                    '<p>Der Artikel konnte im Reader Mode nicht geladen werden.</p>' +
+                    '<div style="display: flex; gap: 8px; justify-content: center; margin-top: 12px;">' +
+                    '<button type="button" class="tab-btn" onclick="retryCurrentArticle()">Erneut versuchen</button>' +
+                    '<a href="' + encodeURI(link) + '" target="_blank" rel="noopener noreferrer" class="tab-btn active">Original öffnen ↗</a>' +
+                    '</div>';
+                errorState.hidden = false;
+            };
 
-                const renderError = () => {
-                    if (loadingState) {
-                        loadingState.hidden = false;
-                        loadingState.innerHTML = '<div class="reader-error-state">' +
-                            '<h3>Laden fehlgeschlagen</h3>' +
-                            '<p>Der Artikel konnte im Reader Mode nicht geladen werden.</p>' +
-                            '<div style="display: flex; gap: 8px; justify-content: center; margin-top: 12px;">' +
-                            '<button type="button" class="tab-btn" onclick="retryCurrentArticle()">Erneut versuchen</button>' +
-                            '<a href="' + encodeURI(link) + '" target="_blank" rel="noopener noreferrer" class="tab-btn active">Original öffnen ↗</a>' +
-                            '</div>' +
-                            '</div>';
-                    }
-                };
+            // Keep the previous article visible but dimmed; the skeleton only appears when loading takes a while
+            clearReaderTimers();
+            frame.classList.remove('is-loading');
+            frame.classList.add('is-stale');
+            skeletonTimer = setTimeout(() => {
+                if (openLink !== link) return;
+                if (loadingState) loadingState.hidden = false;
+                frame.classList.add('is-loading');
+            }, SKELETON_DELAY_MS);
+            readerLoadTimer = setTimeout(renderError, 12000);
 
-                if (readerLoadTimer) clearTimeout(readerLoadTimer);
-                readerLoadTimer = setTimeout(() => {
-                    const currentLoading = document.getElementById('reader-loading-state');
-                    if (currentLoading && !currentLoading.hidden) {
-                        renderError();
-                    }
-                }, 12000);
-
-                frame.onload = () => {
-                    revealReader(link);
-                };
-
-                frame.onerror = () => {
-                    if (readerLoadTimer) clearTimeout(readerLoadTimer);
-                    renderError();
-                };
-
-                frame.src = getReaderUrl(link);
-            }
+            frame.onload = () => {
+                revealReader(link);
+            };
+            frame.onerror = renderError;
+            frame.src = getReaderUrl(link);
         }
 
         function retryCurrentArticle() {
@@ -1841,19 +1865,18 @@ export const renderHtmlFeed = (
             openLink = null;
             markOpenItem();
 
-            if (readerLoadTimer) {
-                clearTimeout(readerLoadTimer);
-                readerLoadTimer = null;
-            }
+            clearReaderTimers();
             const emptyState = document.getElementById('reader-empty-state');
             const loadingState = document.getElementById('reader-loading-state');
+            const errorState = document.getElementById('reader-error-state');
             const frame = document.getElementById('reader-frame');
 
             if (loadingState) loadingState.hidden = true;
+            if (errorState) errorState.hidden = true;
             if (emptyState) emptyState.hidden = false;
             if (frame) {
                 frame.src = 'about:blank';
-                frame.classList.remove('is-loading');
+                frame.classList.remove('is-loading', 'is-stale');
             }
 
             try {
