@@ -595,6 +595,15 @@ export const renderHtmlFeed = (
             }
         }
 
+        /* The selection is where the attention is, even for read articles */
+        .feed-item.is-selected .feed-item-title {
+            color: var(--text-primary);
+        }
+
+        .feed-item.is-selected .feed-item-description {
+            color: var(--text-secondary);
+        }
+
         .feed-item.is-open:not(.is-selected) {
             box-shadow: inset 2px 0 0 rgba(56, 189, 248, 0.4);
         }

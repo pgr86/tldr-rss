@@ -22,7 +22,11 @@ describe("Reader Mode", () => {
     expect(html).toContain("Original öffnen");
     expect(html).toContain("Reader Mode");
     expect(html).toContain('id="close-btn"');
-    expect(html).toContain('id="open-tab-btn"');
+    expect(html).not.toContain('id="open-tab-btn"');
+    expect(html).toContain('class="embedded-source"');
+    expect(html).toContain('id="original-btn"');
+    expect(html).toContain('aria-label="Original öffnen"');
+    expect(html).toContain('class="toolbar-sep"');
     expect(html).toContain("html.is-embedded");
     expect(html).toContain("reader-keydown");
     expect(html).toContain("close-reader");

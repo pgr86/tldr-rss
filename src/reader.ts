@@ -4,6 +4,7 @@ import { JSDOM } from "jsdom";
 
 import { markdownToHtml } from "./markdown";
 import { PWA_BODY_END, renderPwaBodyStart, renderPwaHead } from "./pwa";
+import { tip } from "./shortcuts";
 import { MAX_ARTICLE_CHARS } from "./summary";
 import { logger } from "./util";
 
@@ -626,45 +627,140 @@ export const renderReaderHtml = (
             padding-left: 8px;
         }
 
+        .toolbar-sep,
+        .original-label {
+            display: none;
+        }
+
         html.is-embedded header {
-            padding: 5px 12px;
-            min-height: 38px;
+            padding: 5px 10px 5px 16px;
+            min-height: 40px;
         }
 
         html.is-embedded #back-btn {
             display: none !important;
         }
 
-        html.is-embedded #close-btn,
-        html.is-embedded #open-tab-btn {
+        html.is-embedded #close-btn {
             display: inline-flex !important;
+        }
+
+        /* Embedded toolbar: quiet ghost buttons, only "Original" is highlighted */
+        html.is-embedded header .btn {
+            position: relative;
         }
 
         html.is-embedded .icon-btn {
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: transparent;
+            border-color: transparent;
         }
 
         html.is-embedded .icon-btn svg {
-            width: 15px;
-            height: 15px;
+            width: 16px;
+            height: 16px;
+        }
+
+        @media (hover: hover) {
+            html.is-embedded .icon-btn:hover {
+                background: rgba(255, 255, 255, 0.07);
+                border-color: transparent;
+            }
         }
 
         html.is-embedded .nav-actions {
-            gap: 6px;
+            gap: 2px;
         }
 
-        html.is-embedded .embedded-source-badge {
+        html.is-embedded .toolbar-sep {
+            display: block;
+            width: 1px;
+            height: 18px;
+            margin: 0 6px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        html.is-embedded #original-btn {
+            width: auto;
+            height: 28px;
+            padding: 0 10px;
+            gap: 6px;
+            margin-right: 4px;
+            background: rgba(56, 189, 248, 0.12);
+            border-color: rgba(56, 189, 248, 0.25);
+            font-size: 0.76rem;
+            font-weight: 600;
+        }
+
+        html.is-embedded #original-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        html.is-embedded .original-label {
+            display: inline;
+        }
+
+        html.is-embedded header .summary-btn {
+            height: 28px;
+            padding: 0 10px;
+            background: transparent;
+            border-color: transparent;
+            color: var(--text-secondary);
+            font-size: 0.76rem;
+            font-weight: 600;
+        }
+
+        @media (hover: hover) {
+            html.is-embedded header .summary-btn:hover {
+                background: rgba(255, 255, 255, 0.06);
+                color: var(--text-primary);
+            }
+        }
+
+        html.is-embedded .embedded-source {
             display: inline-flex !important;
-            font-size: 0.72rem;
-            color: var(--accent-color);
-            background: rgba(56, 189, 248, 0.1);
-            border: 1px solid rgba(56, 189, 248, 0.2);
-            padding: 2px 8px;
-            border-radius: 12px;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            font-size: 0.78rem;
             font-weight: 500;
+            color: var(--text-secondary);
             white-space: nowrap;
+        }
+
+        .source-icon {
+            position: relative;
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+        }
+
+        .source-letter,
+        .source-favicon {
+            position: absolute;
+            inset: 0;
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .source-letter {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(56, 189, 248, 0.18);
+            color: var(--accent-color);
+            font-size: 0.6rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .source-favicon {
+            object-fit: contain;
+            background: var(--bg-color);
         }
 
         html.is-embedded .reader-container {
@@ -682,10 +778,9 @@ export const renderReaderHtml = (
             margin-bottom: 8px;
         }
 
+        /* The toolbar already names the source */
         html.is-embedded .domain-badge {
-            margin-bottom: 8px;
-            padding: 2px 8px;
-            font-size: 0.7rem;
+            display: none;
         }
 
         html.is-embedded .article-meta {
@@ -1010,20 +1105,25 @@ export const renderReaderHtml = (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 Zurück
             </button>
-            <span class="embedded-source-badge" hidden>${escapeHtml(article.domain)}</span>
+            <span class="embedded-source" hidden>
+                <span class="source-icon" aria-hidden="true">
+                    <span class="source-letter">${escapeHtml(article.domain.charAt(0))}</span>
+                    <img class="source-favicon" src="${escapeHtmlAttr(`https://${article.domain}/favicon.ico`)}" width="16" height="16" alt="" onerror="this.remove()">
+                </span>
+                ${escapeHtml(article.domain)}
+            </span>
         </div>
         <div class="header-title" aria-hidden="true">${escapeHtml(article.title)}</div>
         <div class="nav-actions">
-            <button class="btn icon-btn" type="button" id="share-btn" aria-label="Teilen" hidden>
+            <button class="btn icon-btn" type="button" id="share-btn" aria-label="Teilen" data-tip="${tip("Teilen")}" hidden>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
             </button>
-            <a href="${escapeHtmlAttr(article.originalUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary icon-btn" aria-label="Original öffnen" title="Original öffnen">
+            <span class="toolbar-sep" aria-hidden="true"></span>
+            <a href="${escapeHtmlAttr(article.originalUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary icon-btn" id="original-btn" aria-label="Original öffnen" data-tip="${tip("Original im Browser öffnen", "original")}">
+                <span class="original-label">Original</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
             </a>
-            <a href="${escapeHtmlAttr(`/reader?url=${encodeURIComponent(article.originalUrl)}`)}" target="_blank" rel="noopener noreferrer" class="btn icon-btn" id="open-tab-btn" aria-label="In neuem Tab öffnen" title="In neuem Tab öffnen" hidden>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            </a>
-            <button class="btn icon-btn" type="button" id="close-btn" aria-label="Reader schließen (Esc)" title="Reader schließen (Esc)" hidden>
+            <button class="btn icon-btn" type="button" id="close-btn" aria-label="Reader schließen" data-tip="${tip("Reader schließen", "close")}" hidden>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
         </div>
@@ -1040,7 +1140,7 @@ export const renderReaderHtml = (
                     <span>~${article.readingTimeMinutes} Min. Lesezeit</span>
                     ${
                       canSummarize
-                        ? `<button class="btn btn-primary summary-btn" type="button" id="summary-btn" aria-controls="summary-card" aria-expanded="false">
+                        ? `<button class="btn btn-primary summary-btn" type="button" id="summary-btn" aria-controls="summary-card" aria-expanded="false" data-tip="${tip("KI-Zusammenfassung", "summary")}">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
                         <span class="summary-btn-label">Zusammenfassen</span>
                     </button>`
@@ -1124,9 +1224,11 @@ export const renderReaderHtml = (
                     window.parent.postMessage({ type: 'close-reader' }, '*');
                 });
             }
-            const openTabBtn = document.getElementById('open-tab-btn');
-            if (openTabBtn) {
-                openTabBtn.hidden = false;
+            // In the split view the summary action lives in the toolbar
+            const summaryButton = document.getElementById('summary-btn');
+            const shareButton = document.getElementById('share-btn');
+            if (summaryButton && shareButton && shareButton.parentNode) {
+                shareButton.parentNode.insertBefore(summaryButton, shareButton);
             }
             // Shortcuts are handled by the feed page; arrow keys keep scrolling the article
             const FORWARDED_KEYS = ['j', 'k', 'J', 'K', ' ', 'Enter', 'o', 'O', 'm', 'M', 's', 'S', 'r', 'R', 'v', 'V', 'a', 'A', '?', 'Escape'];
