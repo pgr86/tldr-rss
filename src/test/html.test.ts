@@ -223,7 +223,7 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain("reader-ready");
     expect(content).toContain("closeSplitView");
     expect(content).toContain("toggleSplitView");
-    expect(content).toContain("handleKeyboardNavigation");
+    expect(content).toContain("handleShortcut");
     expect(content).toContain("isLargeScreen()");
     expect(content).toContain(".reader-loading-state[hidden]");
   });

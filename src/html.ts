@@ -595,6 +595,10 @@ export const renderHtmlFeed = (
             }
         }
 
+        .feed-item.is-open:not(.is-selected) {
+            box-shadow: inset 2px 0 0 rgba(56, 189, 248, 0.4);
+        }
+
         .feed-link {
             text-decoration: none;
             color: inherit;
@@ -1657,8 +1661,10 @@ export const renderHtmlFeed = (
             });
         }
 
-        // Split view handling for desktop / large screens
-        let currentSelectedLink = null;
+        // Split view handling for desktop / large screens.
+        // Skim first: the keyboard moves the selection, the reader only opens on Enter, Space or click.
+        let selectedLink = null;
+        let openLink = null;
         let readerLoadTimer = null;
 
         function isLargeScreen() {
@@ -1677,8 +1683,33 @@ export const renderHtmlFeed = (
             return '/reader?' + params.toString();
         }
 
+        function getItems() {
+            return Array.from(document.querySelectorAll('.feed-item'));
+        }
+
+        function findItem(link) {
+            return link ? getItems().find(item => item.dataset.link === link) || null : null;
+        }
+
+        function selectItem(card) {
+            if (!card) return;
+            selectedLink = card.dataset.link || null;
+            document.querySelectorAll('.feed-item.is-selected').forEach(el => {
+                if (el !== card) el.classList.remove('is-selected');
+            });
+            card.classList.add('is-selected');
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // Marks the card whose article is shown in the reader, even after the selection moved on
+        function markOpenItem() {
+            document.querySelectorAll('.feed-item.is-open').forEach(el => el.classList.remove('is-open'));
+            const card = findItem(openLink);
+            if (card) card.classList.add('is-open');
+        }
+
         function revealReader(url) {
-            if (url && currentSelectedLink && url !== currentSelectedLink) return;
+            if (url && openLink && url !== openLink) return;
             if (readerLoadTimer) {
                 clearTimeout(readerLoadTimer);
                 readerLoadTimer = null;
@@ -1692,16 +1723,13 @@ export const renderHtmlFeed = (
         function openArticleInSplitView(link, cardElement) {
             if (!link) return;
 
-            currentSelectedLink = link;
-
-            // Highlight selected card
-            document.querySelectorAll('.feed-item.is-selected').forEach(el => {
-                el.classList.remove('is-selected');
-            });
+            openLink = link;
             if (cardElement) {
-                cardElement.classList.add('is-selected');
-                cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                selectItem(cardElement);
+            } else {
+                selectedLink = link;
             }
+            markOpenItem();
 
             // Mark as read locally and remotely
             const linkEl = cardElement ? cardElement.querySelector('.feed-link') : null;
@@ -1794,18 +1822,15 @@ export const renderHtmlFeed = (
         }
 
         function retryCurrentArticle() {
-            if (currentSelectedLink) {
-                const card = Array.from(document.querySelectorAll('.feed-item'))
-                    .find(item => item.dataset.link === currentSelectedLink);
-                openArticleInSplitView(currentSelectedLink, card);
+            if (openLink) {
+                openArticleInSplitView(openLink, findItem(openLink));
             }
         }
 
+        // Closes the article; the selection stays so skimming can continue
         function closeSplitView() {
-            currentSelectedLink = null;
-            document.querySelectorAll('.feed-item.is-selected').forEach(el => {
-                el.classList.remove('is-selected');
-            });
+            openLink = null;
+            markOpenItem();
 
             if (readerLoadTimer) {
                 clearTimeout(readerLoadTimer);
@@ -1840,45 +1865,181 @@ export const renderHtmlFeed = (
             }
         }
 
-        function handleKeyboardNavigation(key) {
-            if (!isLargeScreen()) return;
-
-            const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
-            if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
-
-            const items = Array.from(document.querySelectorAll('.feed-item'));
-            if (items.length === 0) return;
-
-            const currentIndex = items.findIndex(item => item.classList.contains('is-selected'));
-
-            if (key === 'j' || key === 'ArrowDown') {
-                const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
-                const target = items[nextIndex];
-                if (target && target.dataset.link) {
-                    openArticleInSplitView(target.dataset.link, target);
-                }
-            } else if (key === 'k' || key === 'ArrowUp') {
-                const prevIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
-                const target = items[prevIndex];
-                if (target && target.dataset.link) {
-                    openArticleInSplitView(target.dataset.link, target);
-                }
-            } else if (key === 'o' || key === 'Enter') {
-                if (currentIndex >= 0 && items[currentIndex] && items[currentIndex].dataset.link) {
-                    window.open(items[currentIndex].dataset.link, '_blank', 'noopener,noreferrer');
-                }
-            } else if (key === 'Escape') {
-                closeSplitView();
-            } else if (key === 'm') {
-                if (currentIndex >= 0 && items[currentIndex] && items[currentIndex].dataset.link) {
-                    const item = items[currentIndex];
-                    if (item.classList.contains('is-read')) {
-                        markAsUnreadFromSwipe(item);
-                    } else {
-                        markAsRead(item.dataset.link, item.querySelector('.feed-link'));
-                    }
-                }
+        // The open article's window, as long as it is visible and same-origin
+        function getReaderWindow() {
+            const frame = document.getElementById('reader-frame');
+            const layout = document.querySelector('.app-layout');
+            if (!openLink || !frame || !frame.contentWindow) return null;
+            if (layout && layout.classList.contains('split-closed')) return null;
+            try {
+                return frame.contentWindow.document ? frame.contentWindow : null;
+            } catch (e) {
+                return null;
             }
+        }
+
+        // Scrolls the open article by about one screen.
+        // Returns false when there is nothing left to scroll in that direction.
+        function pageReader(direction) {
+            const win = getReaderWindow();
+            if (!win) return false;
+            const frame = document.getElementById('reader-frame');
+            // Still loading: swallow the key instead of jumping to the next article
+            if (frame.classList.contains('is-loading')) return true;
+
+            const root = win.document.documentElement;
+            if (direction > 0 && win.scrollY + win.innerHeight >= root.scrollHeight - 4) return false;
+            if (direction < 0 && win.scrollY <= 0) return false;
+
+            const header = win.document.querySelector('header');
+            const headerHeight = header ? header.offsetHeight : 0;
+            const lineHeight = parseFloat(win.getComputedStyle(win.document.body).lineHeight) || 24;
+            const distance = Math.max(80, win.innerHeight - headerHeight - 2 * lineHeight);
+            win.scrollBy({ top: direction * distance, behavior: 'smooth' });
+            return true;
+        }
+
+        let dialogReturnFocus = null;
+
+        function isShortcutDialogOpen() {
+            const dialog = document.getElementById('shortcut-dialog');
+            return !!dialog && !dialog.hidden;
+        }
+
+        function openShortcutDialog() {
+            const dialog = document.getElementById('shortcut-dialog');
+            if (!dialog || !dialog.hidden) return;
+            dialogReturnFocus = document.activeElement;
+            dialog.hidden = false;
+            const closeBtn = document.getElementById('shortcut-dialog-close');
+            if (closeBtn) closeBtn.focus();
+        }
+
+        function closeShortcutDialog() {
+            const dialog = document.getElementById('shortcut-dialog');
+            if (!dialog || dialog.hidden) return;
+            dialog.hidden = true;
+            if (dialogReturnFocus && typeof dialogReturnFocus.focus === 'function') dialogReturnFocus.focus();
+            dialogReturnFocus = null;
+        }
+
+        function initShortcutDialog() {
+            const dialog = document.getElementById('shortcut-dialog');
+            const openBtn = document.getElementById('shortcuts-btn');
+            const closeBtn = document.getElementById('shortcut-dialog-close');
+            if (openBtn) openBtn.addEventListener('click', openShortcutDialog);
+            if (closeBtn) closeBtn.addEventListener('click', closeShortcutDialog);
+            if (dialog) {
+                dialog.addEventListener('click', (e) => {
+                    if (e.target === dialog) closeShortcutDialog();
+                });
+            }
+        }
+
+        // Desktop keyboard shortcuts (listed in src/shortcuts.ts). Returns true when the key was handled.
+        function handleShortcut(key, shiftKey) {
+            if (!isLargeScreen()) return false;
+
+            if (isShortcutDialogOpen()) {
+                if (key === 'Escape' || key === '?') {
+                    closeShortcutDialog();
+                    return true;
+                }
+                return false;
+            }
+
+            const items = getItems();
+            const selected = findItem(selectedLink);
+            const index = selected ? items.indexOf(selected) : -1;
+            const letter = key.length === 1 ? key.toLowerCase() : '';
+            const open = (card) => {
+                if (card && card.dataset.link) openArticleInSplitView(card.dataset.link, card);
+            };
+
+            if (key === '?') {
+                openShortcutDialog();
+                return true;
+            }
+            if (letter === 'j' || key === 'ArrowDown') {
+                selectItem(items[Math.min(index + 1, items.length - 1)]);
+                return true;
+            }
+            if (letter === 'k' || key === 'ArrowUp') {
+                selectItem(items[Math.max(index - 1, 0)]);
+                return true;
+            }
+            if (key === 'Enter') {
+                open(selected);
+                return !!selected;
+            }
+            if (key === ' ') {
+                if (shiftKey) {
+                    pageReader(-1);
+                } else if (!selected) {
+                    open(items[0]);
+                } else if (selectedLink !== openLink || !getReaderWindow()) {
+                    open(selected);
+                } else if (!pageReader(1)) {
+                    open(items[index + 1]);
+                }
+                return true;
+            }
+            if (key === 'Escape') {
+                if (!openLink) return false;
+                closeSplitView();
+                return true;
+            }
+            if (key === 'ArrowLeft' || key === 'ArrowRight') {
+                const tabs = Array.from(document.querySelectorAll('.tab-btn'));
+                const active = tabs.findIndex(tab => tab.classList.contains('active'));
+                const target = tabs[active + (key === 'ArrowRight' ? 1 : -1)];
+                if (target) target.click();
+                return !!target;
+            }
+            if (letter === 'o') {
+                if (selected) window.open(selected.dataset.link, '_blank', 'noopener,noreferrer');
+                return !!selected;
+            }
+            if (letter === 'm') {
+                if (!selected) return false;
+                if (selected.classList.contains('is-read')) {
+                    markAsUnreadFromSwipe(selected);
+                } else {
+                    markAsRead(selected.dataset.link, selected.querySelector('.feed-link'));
+                }
+                return true;
+            }
+            if (letter === 's') {
+                const win = getReaderWindow();
+                const summaryBtn = win ? win.document.getElementById('summary-btn') : null;
+                if (summaryBtn) summaryBtn.click();
+                return !!summaryBtn;
+            }
+            if (letter === 'a' && shiftKey) {
+                markAllAsReadCurrentFeed();
+                return true;
+            }
+            if (letter === 'r') {
+                refreshFeed({ silent: false });
+                return true;
+            }
+            if (letter === 'v') {
+                toggleSplitView();
+                return true;
+            }
+            return false;
+        }
+
+        function isTypingTarget(target) {
+            if (!target || !target.tagName) return false;
+            const tag = target.tagName.toLowerCase();
+            return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+        }
+
+        // Enter and Space keep their native meaning on buttons and links (except the cards)
+        function isActivationTarget(target, key) {
+            if (key !== 'Enter' && key !== ' ') return false;
+            return !!(target && target.closest && target.closest('button, [role="button"], a:not(.feed-link)'));
         }
 
         // Navigations inside the app get a matching view transition
@@ -1925,21 +2086,17 @@ export const renderHtmlFeed = (
             });
 
             window.addEventListener('keydown', (e) => {
-                if (['j', 'k', 'o', 'm', 'Escape', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
-                    if (['j', 'k', 'ArrowDown', 'ArrowUp'].includes(e.key) && isLargeScreen() && !e.metaKey && !e.ctrlKey) {
-                        e.preventDefault();
-                        handleKeyboardNavigation(e.key);
-                    } else if (['o', 'm', 'Escape'].includes(e.key) && isLargeScreen() && !e.metaKey && !e.ctrlKey) {
-                        handleKeyboardNavigation(e.key);
-                    }
-                }
+                if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+                if (isTypingTarget(e.target) || isActivationTarget(e.target, e.key)) return;
+                if (handleShortcut(e.key, e.shiftKey)) e.preventDefault();
             });
 
             window.addEventListener('message', (e) => {
+                if (e.origin !== window.location.origin) return;
                 if (e.data && e.data.type === 'reader-ready') {
                     revealReader(e.data.url);
                 } else if (e.data && e.data.type === 'reader-keydown') {
-                    handleKeyboardNavigation(e.data.key);
+                    handleShortcut(e.data.key, !!e.data.shiftKey);
                 } else if (e.data && e.data.type === 'close-reader') {
                     closeSplitView();
                 }
@@ -2011,11 +2168,9 @@ export const renderHtmlFeed = (
                 });
                 prepareLinks(feedList);
                 applyLocalReadStatus();
-                if (currentSelectedLink) {
-                    const selectedItem = Array.from(feedList.querySelectorAll('.feed-item'))
-                        .find(item => item.dataset.link === currentSelectedLink);
-                    if (selectedItem) selectedItem.classList.add('is-selected');
-                }
+                const selectedItem = findItem(selectedLink);
+                if (selectedItem) selectedItem.classList.add('is-selected');
+                markOpenItem();
                 initSwipeGestures(items);
                 initMoreToggle(feedList);
             };
@@ -2277,6 +2432,7 @@ export const renderHtmlFeed = (
             initSwipeGestures(document.querySelectorAll('.feed-item'));
             initMoreToggle(document);
             initNavigation();
+            initShortcutDialog();
             initPullToRefresh();
             initNewArticlesPill();
             initPushToggle();

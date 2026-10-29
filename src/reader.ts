@@ -1128,12 +1128,17 @@ export const renderReaderHtml = (
             if (openTabBtn) {
                 openTabBtn.hidden = false;
             }
+            // Shortcuts are handled by the feed page; arrow keys keep scrolling the article
+            const FORWARDED_KEYS = ['j', 'k', 'J', 'K', ' ', 'Enter', 'o', 'O', 'm', 'M', 's', 'S', 'r', 'R', 'v', 'V', 'a', 'A', '?', 'Escape'];
             window.addEventListener('keydown', (e) => {
-                const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
-                if (activeTag === 'input' || activeTag === 'textarea') return;
-                if (['j', 'k', 'o', 'm', 'Escape'].includes(e.key) && !e.metaKey && !e.ctrlKey) {
-                    window.parent.postMessage({ type: 'reader-keydown', key: e.key }, '*');
-                }
+                if (e.metaKey || e.ctrlKey || e.altKey || !FORWARDED_KEYS.includes(e.key)) return;
+                const target = e.target;
+                const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || tag === 'select' || (target && target.isContentEditable)) return;
+                if ((e.key === 'Enter' || e.key === ' ') && target && target.closest && target.closest('button, a, [role="button"]')) return;
+                if ((e.key === 'a' || e.key === 'A') && !e.shiftKey) return;
+                e.preventDefault();
+                window.parent.postMessage({ type: 'reader-keydown', key: e.key, shiftKey: e.shiftKey }, window.location.origin);
             });
             try {
                 window.parent.postMessage({ type: 'reader-ready', url: articleLink }, '*');
