@@ -2,6 +2,7 @@ import { Readability } from "@mozilla/readability";
 import axios from "axios";
 import { JSDOM } from "jsdom";
 
+import { markdownToHtml } from "./markdown";
 import { PWA_BODY_END, renderPwaBodyStart, renderPwaHead } from "./pwa";
 import { MAX_ARTICLE_CHARS } from "./summary";
 import { logger } from "./util";
@@ -97,36 +98,7 @@ function parseJinaMarkdownToHtml(markdown: string): {
     return null;
   }
 
-  const html = rawMarkdown
-    .replace(/^### (.*$)/gim, "<h3>$1</h3>")
-    .replace(/^## (.*$)/gim, "<h2>$1</h2>")
-    .replace(/^# (.*$)/gim, "<h1>$1</h1>")
-    .replace(/^\> (.*$)/gim, "<blockquote>$1</blockquote>")
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.*?)\*/g, "<em>$1</em>")
-    .replace(
-      /\[(.*?)\]\((.*?)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
-    );
-
-  const paragraphs = html
-    .split(/\n\s*\n/)
-    .map((p) => {
-      const trimmed = p.trim();
-      if (!trimmed) return "";
-      if (
-        trimmed.startsWith("<h") ||
-        trimmed.startsWith("<blockquote") ||
-        trimmed.startsWith("<ul") ||
-        trimmed.startsWith("<ol")
-      ) {
-        return trimmed;
-      }
-      return `<p>${trimmed}</p>`;
-    })
-    .filter(Boolean);
-
-  const contentHtml = paragraphs.join("\n");
+  const contentHtml = markdownToHtml(rawMarkdown);
   if (!contentHtml || contentHtml.length < 100) {
     return null;
   }
