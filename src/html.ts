@@ -1,8 +1,10 @@
 import { writeFile } from "fs/promises";
 
 import { FEEDS } from "./config";
+import { sourceHost, splitReadingTime } from "./postMeta";
 import { PWA_BODY_END, renderPwaBodyStart, renderPwaHead } from "./pwa";
 import { isRead } from "./readStatus";
+import { renderShortcutDialog, SHORTCUT_DIALOG_CSS, tip } from "./shortcuts";
 import { logger } from "./util";
 
 type Post = {
@@ -229,31 +231,43 @@ export const renderHtmlFeed = (
         .header-actions {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 2px;
             flex-shrink: 0;
         }
 
         .header-action-btn {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border-color);
+            position: relative;
+            background: transparent;
+            border: 0;
             color: var(--text-secondary);
-            border-radius: 6px;
-            width: 30px;
-            height: 30px;
+            border-radius: 8px;
+            width: 32px;
+            height: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
         }
 
         @media (hover: hover) {
             .header-action-btn:hover {
-                color: var(--accent-color);
-                background: var(--accent-glow);
-                border-color: rgba(56, 189, 248, 0.3);
-                transform: scale(1.05);
+                color: var(--text-primary);
+                background: rgba(255, 255, 255, 0.07);
             }
+        }
+
+        .header-action-btn:focus-visible,
+        .list-bar-btn:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 1px;
+        }
+
+        .header-sep {
+            width: 1px;
+            height: 18px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 0 6px;
         }
 
         .header-action-btn:active {
@@ -276,7 +290,6 @@ export const renderHtmlFeed = (
 
         #push-toggle-btn.is-on {
             color: var(--accent-color);
-            border-color: rgba(56, 189, 248, 0.3);
         }
 
         #push-toggle-btn.is-busy {
@@ -342,10 +355,12 @@ export const renderHtmlFeed = (
 
             .header-actions {
                 grid-column: 2;
+                grid-row: 1;
             }
 
             .feed-tabs-container {
                 grid-column: 1 / -1;
+                grid-row: 2;
             }
         }
 
@@ -528,12 +543,18 @@ export const renderHtmlFeed = (
             opacity: 1;
         }
 
-        /* Styling for already read articles (dimmed state) */
-        .feed-item.is-read:not(.swiping-left):not(.swiping-right) {
-            opacity: 0.45;
-            filter: grayscale(40%);
-            border-color: rgba(255, 255, 255, 0.03);
-            background-color: rgba(17, 24, 39, 0.5);
+        /* Already read articles: grey title and teaser, the card itself stays calm */
+        .feed-item.is-read .feed-item-title {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .feed-item.is-read .feed-item-description {
+            color: var(--text-muted);
+        }
+
+        .feed-item.is-read .feed-thumbnail {
+            opacity: 0.6;
         }
 
         @media (hover: hover) {
@@ -541,8 +562,6 @@ export const renderHtmlFeed = (
                 transform: translateY(-1px);
                 border-color: rgba(56, 189, 248, 0.4);
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-                opacity: 1; /* Restore opacity on hover for readability */
-                filter: none;
             }
 
             .feed-item:hover .feed-link {
@@ -560,27 +579,19 @@ export const renderHtmlFeed = (
 
         /* Selected article item styling for split view */
         .feed-item.is-selected {
-            border-color: rgba(56, 189, 248, 0.4) !important;
-            border-left: 3px solid var(--accent-color) !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-            background-color: #172133 !important;
-            opacity: 1 !important;
-            filter: none !important;
+            border-color: rgba(56, 189, 248, 0.45) !important;
+            box-shadow: inset 3px 0 0 var(--accent-color) !important;
+            background-color: #14233a !important;
             transform: none !important;
         }
 
         .feed-item.is-selected .feed-link {
-            background-color: #172133 !important;
-        }
-
-        .feed-item.is-selected .feed-item-title {
-            color: var(--accent-color) !important;
+            background-color: #14233a !important;
         }
 
         @media (hover: hover) {
             .feed-item.is-selected:hover {
                 transform: none;
-                border-left-color: var(--accent-color) !important;
             }
         }
 
@@ -619,17 +630,58 @@ export const renderHtmlFeed = (
             font-weight: 600;
             line-height: 1.35;
             color: var(--text-primary);
-            margin-bottom: 4px;
+            margin-bottom: 5px;
             transition: color 0.15s ease;
         }
 
-        .feed-item-meta {
+        .feed-meta {
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 6px;
-            font-size: 0.75rem;
+            gap: 6px;
+            min-width: 0;
+            margin-bottom: 5px;
+            font-size: 0.7rem;
             color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .feed-source {
+            color: var(--text-secondary);
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .unread-dot {
+            display: none;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: var(--accent-color);
+            box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+        }
+
+        .feed-item:not(.is-read) .unread-dot {
+            display: inline-block;
+        }
+
+        .all-read-hint {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 22px 12px 10px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .all-read-hint svg {
+            color: var(--accent-color);
+        }
+
+        .list-bar {
+            display: none;
         }
 
         .feed-item-description {
@@ -726,14 +778,21 @@ export const renderHtmlFeed = (
             display: none;
         }
 
-        #split-toggle-btn {
+        #split-toggle-btn,
+        #shortcuts-btn,
+        .header-sep {
             display: none;
         }
 
         /* Large screens split view */
         @media (min-width: 900px) {
-            #split-toggle-btn {
+            #split-toggle-btn,
+            #shortcuts-btn {
                 display: flex;
+            }
+
+            .header-sep {
+                display: block;
             }
 
             .feed-pane {
@@ -749,6 +808,65 @@ export const renderHtmlFeed = (
                     flex: 0 0 420px;
                     max-width: 480px;
                 }
+            }
+
+            /* Desktop: list actions live in the list bar, teasers expand on selection */
+            .list-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                height: 40px;
+                flex-shrink: 0;
+                padding: 0 10px 0 16px;
+                border-bottom: 1px solid var(--border-color);
+                font-size: 0.78rem;
+                color: var(--text-secondary);
+                white-space: nowrap;
+            }
+
+            .list-bar-info b {
+                color: var(--text-primary);
+                font-weight: 600;
+            }
+
+            .list-bar-btn {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                height: 28px;
+                padding: 0 10px;
+                border: 0;
+                border-radius: 7px;
+                background: transparent;
+                color: var(--text-secondary);
+                font: 600 0.76rem var(--font-family);
+                cursor: pointer;
+                transition: background-color 0.15s ease, color 0.15s ease;
+            }
+
+            .list-bar-btn:hover {
+                background: rgba(255, 255, 255, 0.06);
+                color: var(--text-primary);
+            }
+
+            #mark-all-read-btn,
+            #feed-updated,
+            .more-link-container {
+                display: none;
+            }
+
+            .feed-item-description {
+                -webkit-line-clamp: 3;
+                line-clamp: 3;
+            }
+
+            .feed-item.is-selected .feed-item-description {
+                display: block;
+                -webkit-line-clamp: none;
+                line-clamp: none;
+                overflow: visible;
             }
 
             .reader-pane {
@@ -789,34 +907,6 @@ export const renderHtmlFeed = (
 
         #split-toggle-btn.is-on {
             color: var(--accent-color);
-            border-color: rgba(56, 189, 248, 0.3);
-            background: var(--accent-glow);
-        }
-
-        /* Reader pane close button */
-        .reader-pane-close-btn {
-            position: absolute;
-            top: 12px;
-            right: 14px;
-            z-index: 20;
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid var(--border-color);
-            color: var(--text-muted);
-            border-radius: 6px;
-            width: 30px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .reader-pane-close-btn:hover {
-            color: var(--text-primary);
-            background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
         }
 
         /* Ensure hidden attribute always wins over display: flex */
@@ -956,24 +1046,6 @@ export const renderHtmlFeed = (
             50% { opacity: 0.8; }
         }
 
-        .reader-loading-indicator {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--text-secondary);
-            font-size: 0.82rem;
-            margin-top: 16px;
-        }
-
-        .reader-loading-spinner {
-            width: 18px;
-            height: 18px;
-            border: 2px solid rgba(56, 189, 248, 0.2);
-            border-top-color: var(--accent-color);
-            border-radius: 50%;
-            animation: ptr-spin 0.8s linear infinite;
-        }
-
         /* Reader iframe */
         .reader-frame-container {
             flex: 1;
@@ -1015,6 +1087,7 @@ export const renderHtmlFeed = (
             color: var(--text-muted);
             margin-bottom: 16px;
         }
+        ${SHORTCUT_DIALOG_CSS}
     </style>
 </head>
 <body data-generated="${Date.now()}">
@@ -1030,13 +1103,7 @@ export const renderHtmlFeed = (
                 </nav>
             </div>
             <div class="header-actions">
-                <button id="split-toggle-btn" class="header-action-btn is-on" type="button" title="Split View schließen" aria-label="Split View umschalten" onclick="toggleSplitView()">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect width="18" height="18" x="3" y="3" rx="2"/>
-                        <line x1="12" y1="3" x2="12" y2="21"/>
-                    </svg>
-                </button>
-                <button id="push-toggle-btn" class="header-action-btn" type="button" title="Push-Benachrichtigungen aktivieren" aria-pressed="false" hidden>
+                <button id="push-toggle-btn" class="header-action-btn" type="button" aria-label="Push-Benachrichtigungen aktivieren" data-tip="${tip("Benachrichtigungen aktivieren")}" aria-pressed="false" hidden>
                     <svg class="bell-off" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M10.268 21a2 2 0 0 0 3.464 0"/>
                         <path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742"/>
@@ -1048,7 +1115,20 @@ export const renderHtmlFeed = (
                         <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>
                     </svg>
                 </button>
-                <button id="mark-all-read-btn" class="header-action-btn" title="Alle als gelesen markieren" onclick="markAllAsReadCurrentFeed()">
+                <button id="split-toggle-btn" class="header-action-btn is-on" type="button" aria-label="Split View umschalten" aria-pressed="true" data-tip="${tip("Split View an / aus", "split")}" onclick="toggleSplitView()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="18" height="18" x="3" y="3" rx="2"/>
+                        <line x1="12" y1="3" x2="12" y2="21"/>
+                    </svg>
+                </button>
+                <span class="header-sep" aria-hidden="true"></span>
+                <button id="shortcuts-btn" class="header-action-btn" type="button" aria-label="Tastenkürzel anzeigen" aria-haspopup="dialog" data-tip="${tip("Tastenkürzel", "help")}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="6" width="20" height="12" rx="2"/>
+                        <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>
+                    </svg>
+                </button>
+                <button id="mark-all-read-btn" class="header-action-btn" type="button" aria-label="Alle als gelesen markieren" data-tip="${tip("Alle als gelesen markieren", "markAll")}" onclick="markAllAsReadCurrentFeed()">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M18 6 7 17l-5-5"/>
                         <path d="m22 10-7.5 7.5L13 16"/>
@@ -1068,19 +1148,34 @@ export const renderHtmlFeed = (
     <button class="new-articles-pill" type="button">Neue Artikel</button>
     <div class="app-layout">
         <div class="feed-pane">
+            <div class="list-bar" id="list-bar">
+                <span class="list-bar-info"><b id="unread-count">${sortedPosts.filter((post) => !isRead(post.link)).length} ungelesen</b> · <span id="feed-stand">Stand ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}</span></span>
+                <button type="button" class="list-bar-btn" id="list-mark-all-btn" aria-label="Alle als gelesen markieren" data-tip="${tip("Alle als gelesen markieren", "markAll")}" onclick="markAllAsReadCurrentFeed()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 6 7 17l-5-5"/>
+                        <path d="m22 10-7.5 7.5L13 16"/>
+                    </svg>
+                    Alle gelesen
+                </button>
+            </div>
             <main class="feed-list">
         ${sortedPosts
           .map((post, index) => {
             const read = isRead(post.link);
             const readerHref = `/reader?url=${encodeURIComponent(post.link)}`;
+            const { title, minutes } = splitReadingTime(post.title);
+            const host = sourceHost(post.link);
+            const metaParts = [
+              host ? `<span class="feed-source">${escapeHtml(host)}</span>` : "",
+              `<time datetime="${new Date(post.date).toISOString()}">${escapeHtml(formatDate(post.date))}</time>`,
+              minutes ? `<span class="feed-reading-time">${minutes} Min.</span>` : "",
+            ].filter(Boolean);
             return `        <article class="feed-item ${read ? "is-read" : ""}" style="--i: ${index}" data-link="${escapeHtmlAttr(post.link)}">
             <a href="${escapeHtmlAttr(readerHref)}" onclick="markAsRead(this.closest('.feed-item').dataset.link, this)" target="_blank" class="feed-link" rel="noopener noreferrer">
                 <div class="feed-content-wrapper">
                     <div class="feed-text-block">
-                        <h2 class="feed-item-title">${escapeHtml(post.title)}</h2>
-                        <div class="feed-item-meta">
-                            <time datetime="${new Date(post.date).toISOString()}">${escapeHtml(formatDate(post.date))}</time>
-                        </div>
+                        <div class="feed-meta"><span class="unread-dot" aria-hidden="true"></span>${metaParts.join('<span aria-hidden="true">·</span>')}</div>
+                        <h2 class="feed-item-title">${escapeHtml(title)}</h2>
                         <p class="feed-item-description">${escapeHtml(post.content)}</p>
                     </div>
                     ${
@@ -1098,6 +1193,10 @@ export const renderHtmlFeed = (
         </article>`;
           })
           .join("\n")}
+            <div class="all-read-hint" id="all-read-hint" hidden>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                Alles gelesen
+            </div>
             </main>
             <footer id="feed-updated">
                 Stand: ${new Date().toLocaleDateString("de-DE")} ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
@@ -1105,12 +1204,6 @@ export const renderHtmlFeed = (
         </div>
         <aside class="reader-pane" id="reader-pane" aria-label="Reader-Ansicht">
             <div class="reader-empty-state" id="reader-empty-state">
-                <button type="button" class="reader-pane-close-btn" id="reader-pane-close-btn" title="Split View schließen (Esc)" aria-label="Split View schließen" onclick="closeSplitView()">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                </button>
                 <div class="reader-empty-icon">
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
@@ -1118,11 +1211,11 @@ export const renderHtmlFeed = (
                     </svg>
                 </div>
                 <h3 class="reader-empty-title">Kein Artikel ausgewählt</h3>
-                <p class="reader-empty-desc">Wähle einen Artikel aus der Liste aus, um die Reader-Ansicht direkt hier zu öffnen.</p>
+                <p class="reader-empty-desc">Wähle einen Artikel aus der Liste aus und öffne ihn mit Enter oder einem Klick hier im Reader.</p>
                 <div class="reader-shortcuts-hint">
-                    <span><kbd>J</kbd> / <kbd>K</kbd> Navigieren</span>
-                    <span><kbd>O</kbd> Original öffnen</span>
-                    <span><kbd>Esc</kbd> Schließen</span>
+                    <span><kbd>J</kbd> / <kbd>K</kbd> Auswählen</span>
+                    <span><kbd>Enter</kbd> Öffnen</span>
+                    <span><kbd>?</kbd> Alle Tastenkürzel</span>
                 </div>
             </div>
             <div class="reader-loading-state" id="reader-loading-state" hidden>
@@ -1140,10 +1233,6 @@ export const renderHtmlFeed = (
                     <div class="skeleton-line"></div>
                     <div class="skeleton-line"></div>
                     <div class="skeleton-line medium"></div>
-                </div>
-                <div class="reader-loading-indicator">
-                    <div class="reader-loading-spinner"></div>
-                    <span>Artikel wird geladen...</span>
                 </div>
             </div>
             <div class="reader-frame-container" id="reader-frame-container">
@@ -1221,6 +1310,22 @@ export const renderHtmlFeed = (
                     item.classList.remove('is-read');
                 }
             });
+            updateUnreadCount();
+        }
+
+        function updateUnreadCount() {
+            const unread = document.querySelectorAll('.feed-item:not(.is-read)').length;
+            const label = document.getElementById('unread-count');
+            if (label) label.textContent = unread === 0 ? 'Alles gelesen' : unread + ' ungelesen';
+            const hint = document.getElementById('all-read-hint');
+            if (hint) hint.hidden = unread > 0;
+        }
+
+        function updateFeedStand() {
+            const stand = document.getElementById('feed-stand');
+            const generated = Number(document.body.dataset.generated || 0);
+            if (!stand || !generated) return;
+            stand.textContent = 'Stand ' + new Date(generated).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
         }
 
         function postReadStatus(path, param, value) {
@@ -1246,6 +1351,7 @@ export const renderHtmlFeed = (
                 card.classList.add('is-read');
             }
             saveLocalReadStatus([link], true);
+            updateUnreadCount();
 
             // Post the read status back to the server
             postReadStatus('/mark-read', 'link', link)
@@ -1267,6 +1373,7 @@ export const renderHtmlFeed = (
             if (links.length === 0) return;
 
             saveLocalReadStatus(links, true);
+            updateUnreadCount();
             postReadStatus('/mark-all-read', 'links', links.join(','))
                 .catch(err => console.error('Failed to mark all as read:', err));
         }
@@ -1286,6 +1393,7 @@ export const renderHtmlFeed = (
 
             item.classList.remove('is-read');
             saveLocalReadStatus([link], false);
+            updateUnreadCount();
 
             postReadStatus('/mark-unread', 'link', link)
                 .catch(err => console.error('Failed to mark unread status:', err));
@@ -1613,7 +1721,6 @@ export const renderHtmlFeed = (
             if (toggleBtn) {
                 toggleBtn.classList.add('is-on');
                 toggleBtn.setAttribute('aria-pressed', 'true');
-                toggleBtn.title = 'Split View schließen';
             }
 
             // Update URL without page reload
@@ -1645,10 +1752,6 @@ export const renderHtmlFeed = (
                     '<div class="skeleton-line"></div>' +
                     '<div class="skeleton-line"></div>' +
                     '<div class="skeleton-line medium"></div>' +
-                    '</div>' +
-                    '<div class="reader-loading-indicator">' +
-                    '<div class="reader-loading-spinner"></div>' +
-                    '<span>Artikel wird geladen...</span>' +
                     '</div>';
             }
 
@@ -1734,7 +1837,6 @@ export const renderHtmlFeed = (
             if (toggleBtn) {
                 toggleBtn.classList.toggle('is-on', !isClosed);
                 toggleBtn.setAttribute('aria-pressed', isClosed ? 'false' : 'true');
-                toggleBtn.title = isClosed ? 'Split View öffnen' : 'Split View schließen';
             }
         }
 
@@ -1892,6 +1994,7 @@ export const renderHtmlFeed = (
             const footer = document.getElementById('feed-updated');
             if (freshFooter && footer) footer.innerHTML = freshFooter.innerHTML;
             document.body.dataset.generated = doc.body.dataset.generated || String(Date.now());
+            updateFeedStand();
         }
 
         function applyFeed(doc, addedLinks) {
@@ -2098,7 +2201,9 @@ export const renderHtmlFeed = (
             const setState = (on) => {
                 btn.classList.toggle('is-on', on);
                 btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-                btn.title = on ? 'Push-Benachrichtigungen deaktivieren' : 'Push-Benachrichtigungen aktivieren';
+                const label = on ? 'Benachrichtigungen deaktivieren' : 'Benachrichtigungen aktivieren';
+                btn.dataset.tip = label;
+                btn.setAttribute('aria-label', 'Push-' + label);
             };
             const subscribe = (registration) => registration.pushManager.subscribe({
                 userVisibleOnly: true,
@@ -2167,6 +2272,7 @@ export const renderHtmlFeed = (
 
         function initAll() {
             applyLocalReadStatus();
+            updateFeedStand();
             initTabScrolling();
             initSwipeGestures(document.querySelectorAll('.feed-item'));
             initMoreToggle(document);
@@ -2202,6 +2308,7 @@ export const renderHtmlFeed = (
             initAll();
         }
     </script>
+    ${renderShortcutDialog()}
     ${PWA_BODY_END}
 </body>
 </html>`;

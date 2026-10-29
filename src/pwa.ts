@@ -122,6 +122,27 @@ const APP_CSS = `
             transition: width 6s cubic-bezier(0.1, 0.7, 0.2, 1), opacity 0.2s;
         }
 
+        /* Instant tooltips with the keyboard shortcut (data-tip, see src/shortcuts.ts) */
+        @media (hover: hover) {
+            [data-tip]:hover::after {
+                content: attr(data-tip);
+                position: absolute;
+                top: calc(100% + 8px);
+                right: 0;
+                z-index: 1500;
+                padding: 5px 8px;
+                border-radius: 6px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                background: #1f2937;
+                box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+                color: #f3f4f6;
+                font: 500 0.72rem/1.3 Inter, system-ui, sans-serif;
+                letter-spacing: 0;
+                white-space: pre;
+                pointer-events: none;
+            }
+        }
+
         /* Toast notifications */
         #app-toast {
             position: fixed;

@@ -1,6 +1,6 @@
 import { readFile, unlink } from "fs/promises";
 
-import { writeHtmlFeed } from "../html";
+import { renderHtmlFeed, writeHtmlFeed } from "../html";
 
 describe("HTML Feed Generation", () => {
   const testPosts = [
@@ -189,7 +189,9 @@ describe("HTML Feed Generation", () => {
 
     const content = await readFile("./site/test.html", "utf8");
 
-    expect(content).toContain('<link rel="manifest" href="/manifest.webmanifest">');
+    expect(content).toContain(
+      '<link rel="manifest" href="/manifest.webmanifest">',
+    );
     expect(content).toContain("viewport-fit=cover");
     expect(content).toContain("@view-transition");
     expect(content).toContain("navigator.serviceWorker.register('/sw.js')");
@@ -208,9 +210,12 @@ describe("HTML Feed Generation", () => {
     expect(content).toContain('<aside class="reader-pane" id="reader-pane"');
     expect(content).toContain('<iframe id="reader-frame"');
     expect(content).toContain('<button id="split-toggle-btn"');
-    expect(content).toContain('<button type="button" class="reader-pane-close-btn"');
-    expect(content).toContain('<div class="reader-empty-state" id="reader-empty-state">');
-    expect(content).toContain('<div class="reader-loading-state" id="reader-loading-state"');
+    expect(content).toContain(
+      '<div class="reader-empty-state" id="reader-empty-state">',
+    );
+    expect(content).toContain(
+      '<div class="reader-loading-state" id="reader-loading-state"',
+    );
     expect(content).toContain("@media (min-width: 900px)");
     expect(content).toContain(".feed-item.is-selected");
     expect(content).toContain("openArticleInSplitView");
@@ -227,5 +232,48 @@ describe("HTML Feed Generation", () => {
     await expect(writeHtmlFeed("test", [])).rejects.toThrow(
       "No posts found for test",
     );
+  });
+  describe("skimmable list and desktop chrome", () => {
+    const posts = [
+      {
+        title: "Test Article 1 (5 minute read)",
+        link: "https://www.example.com/1",
+        content: "This is test content 1",
+        date: new Date("2024-01-15T10:00:00Z").toISOString(),
+      },
+    ];
+
+    it("moves the reading time out of the title into the meta row", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).toContain(">Test Article 1</h2>");
+      expect(html).toContain("5 Min.");
+      expect(html).not.toContain("(5 minute read)");
+    });
+
+    it("shows the source host in the meta row", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).toContain('class="feed-source">example.com<');
+    });
+
+    it("renders the list bar, the all-read hint and the shortcut dialog", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).toContain('id="list-bar"');
+      expect(html).toContain('id="unread-count"');
+      expect(html).toContain("Alle gelesen");
+      expect(html).toContain('id="all-read-hint"');
+      expect(html).toContain('id="shortcuts-btn"');
+      expect(html).toContain('id="shortcut-dialog"');
+    });
+
+    it("explains header buttons with tooltips including their shortcut", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).toContain('data-tip="Split View an / aus   V"');
+    });
+
+    it("drops the empty-state close button and the stacked loading indicator", () => {
+      const html = renderHtmlFeed("test", posts);
+      expect(html).not.toContain("reader-pane-close-btn");
+      expect(html).not.toContain("reader-loading-indicator");
+    });
   });
 });
