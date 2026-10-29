@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>TLDR Reader – Feinschliff</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0f19; --card: #111827; --card-hover: #1f2937;
+    --text: #f3f4f6; --text2: #9ca3af; --muted: #6b7280;
+    --accent: #38bdf8; --glow: rgba(56,189,248,.15); --border: rgba(255,255,255,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #05070d; color: var(--text); font-family: Inter, system-ui, sans-serif; padding: 32px 40px 80px; }
+  .page-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 6px; }
+  .page-sub { color: var(--text2); font-size: .95rem; margin-bottom: 24px; max-width: 900px; line-height: 1.5; }
+  .page-sub kbd, .notes kbd { font-family: inherit; font-size: .78rem; padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.08); color: var(--text); }
+
+  /* ---------- App frame ---------- */
+  .app { width: 1280px; height: 760px; background: var(--bg); border-radius: 12px; border: 1px solid rgba(255,255,255,.1); overflow: hidden; display: flex; flex-direction: column; position: relative; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  .hdr { height: 48px; display: flex; align-items: center; gap: 16px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--border); background: rgba(17,24,39,.6); }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .98rem; white-space: nowrap; }
+  .brand::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .tabs { display: flex; gap: 6px; flex: 1; overflow: hidden; }
+  .tab { font-size: .78rem; font-weight: 600; color: var(--text2); padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,.03); white-space: nowrap; position: relative; }
+  .tab.active { background: var(--accent); color: #04121c; border-color: transparent; }
+  .tab .count { font-weight: 500; opacity: .6; margin-left: 4px; }
+  .tab.active .count { opacity: .7; }
+  .hdr-actions { display: flex; align-items: center; gap: 2px; }
+  .sep { width: 1px; height: 18px; background: rgba(255,255,255,.1); margin: 0 6px; }
+
+  .ibtn { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--text2); position: relative; cursor: pointer; border: 0; background: transparent; }
+  .ibtn:hover { background: rgba(255,255,255,.07); color: var(--text); }
+  .ibtn.on { color: var(--accent); }
+  .ibtn svg { width: 18px; height: 18px; }
+  .tbtn { height: 28px; padding: 0 10px; border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font: 600 .76rem Inter, sans-serif; color: var(--text2); background: transparent; border: 1px solid transparent; cursor: pointer; position: relative; white-space: nowrap; }
+  .tbtn:hover { background: rgba(255,255,255,.06); color: var(--text); }
+  .tbtn svg { width: 14px; height: 14px; }
+  .tbtn.primary { background: rgba(56,189,248,.12); color: var(--accent); border-color: rgba(56,189,248,.25); }
+  .tbtn.primary:hover { background: rgba(56,189,248,.2); }
+
+  /* Tooltip with shortcut */
+  [data-tip]:hover::after {
+    content: attr(data-tip); position: absolute; top: calc(100% + 8px); right: 0; z-index: 50;
+    background: #1f2937; color: var(--text); font: 500 .72rem Inter, sans-serif; padding: 5px 8px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.1); white-space: pre; box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  }
+
+  .body { flex: 1; display: flex; min-height: 0; }
+  .list { width: 430px; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .list-bar { height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 16px; border-bottom: 1px solid var(--border); }
+  .list-bar .lt { font-size: .8rem; color: var(--text2); }
+  .list-bar .lt b { color: var(--text); font-weight: 600; }
+  .items { flex: 1; overflow: hidden; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+  .item { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px 13px; display: flex; gap: 12px; position: relative; }
+  .item:hover { background: #151e2e; }
+  .item .txt { flex: 1; min-width: 0; }
+  .meta { display: flex; align-items: center; gap: 6px; font-size: .7rem; color: var(--muted); margin-bottom: 5px; letter-spacing: .01em; }
+  .meta .src { color: var(--text2); font-weight: 600; }
+  .meta .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px rgba(56,189,248,.6); margin-right: 2px; }
+  .item h3 { font-size: .93rem; line-height: 1.32; font-weight: 650; margin-bottom: 5px; }
+  .item p { font-size: .82rem; line-height: 1.5; color: var(--text2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .item.read h3 { color: var(--text2); font-weight: 600; }
+  .item.read p { color: var(--muted); }
+  .item.sel { background: #14233a; border-color: rgba(56,189,248,.45); box-shadow: inset 3px 0 0 var(--accent); }
+  .item.sel p { -webkit-line-clamp: unset; display: block; }
+  .thumb { width: 64px; height: 64px; border-radius: 8px; flex-shrink: 0; background: linear-gradient(135deg,#1e3a5f,#0f172a); border: 1px solid var(--border); }
+
+  .reader { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .rbar { height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 16px; border-bottom: 1px solid var(--border); }
+  .rsrc { display: flex; align-items: center; gap: 8px; font-size: .78rem; color: var(--text2); font-weight: 500; }
+  .fav { width: 16px; height: 16px; border-radius: 4px; background: #e11d48; display: inline-flex; align-items: center; justify-content: center; font-size: .6rem; font-weight: 800; color: #fff; }
+  .ractions { display: flex; align-items: center; gap: 2px; }
+  .rscroll { flex: 1; overflow: hidden; }
+  .art { max-width: 680px; margin: 0 auto; padding: 28px 24px; }
+  .art h1 { font-size: 1.55rem; line-height: 1.25; letter-spacing: -.01em; margin-bottom: 10px; }
+  .art .ameta { font-size: .8rem; color: var(--muted); margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .art p { font-size: 1.02rem; line-height: 1.7; color: #e5e7eb; margin-bottom: 16px; }
+  .art a { color: var(--accent); }
+  .lead { height: 200px; border-radius: 10px; margin-bottom: 20px; background: linear-gradient(120deg,#7f1d1d 0%,#1e3a5f 45%,#0f172a 100%); position: relative; overflow: hidden; }
+  .lead::after { content: "C"; position: absolute; right: 22%; top: 18%; font: 800 7rem Inter; color: rgba(255,255,255,.18); }
+  figure { margin: 4px 0 18px; }
+  figure .img { height: 120px; border-radius: 8px; background: linear-gradient(90deg,#0f172a,#1e293b 50%,#0f172a); border: 1px solid var(--border); }
+  figcaption { font-size: .75rem; color: var(--muted); margin-top: 6px; }
+
+  /* Markers */
+  .mk { position: absolute; z-index: 40; width: 22px; height: 22px; border-radius: 50%; background: #f59e0b; color: #111; font: 800 .72rem Inter; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px rgba(245,158,11,.25); pointer-events: none; }
+
+  /* Shortcut overlay */
+  .ov { position: absolute; inset: 0; background: rgba(3,6,12,.6); backdrop-filter: blur(3px); display: none; align-items: center; justify-content: center; z-index: 60; }
+  .app.show-help .ov { display: flex; }
+  .sheet { width: 720px; background: #111827; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.6); overflow: hidden; }
+  .sheet-h { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); font-weight: 700; }
+  .sheet-b { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 36px; padding: 18px 20px 6px; }
+  .grp h4 { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 6px 0 8px; }
+  .row { display: flex; justify-content: space-between; align-items: center; font-size: .84rem; color: #e5e7eb; padding: 5px 0; }
+  .keys { display: flex; gap: 4px; align-items: center; color: var(--muted); font-size: .72rem; }
+  .k { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); border-bottom-width: 2px; display: inline-flex; align-items: center; justify-content: center; font: 600 .72rem Inter; color: var(--text); }
+  .sheet-f { padding: 12px 20px; font-size: .76rem; color: var(--muted); border-top: 1px solid var(--border); background: rgba(255,255,255,.02); }
+
+  .notes { width: 1280px; margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 32px; }
+  .note { display: flex; gap: 10px; font-size: .88rem; line-height: 1.5; color: #d1d5db; }
+  .note .n { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #f59e0b; color: #111; font: 800 .72rem Inter; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+  .note b { color: var(--text); }
+
+  .q { width: 1280px; margin-top: 40px; }
+  .q h2 { font-size: 1.2rem; margin-bottom: 6px; }
+  .q .sub { color: var(--text2); font-size: .9rem; margin-bottom: 16px; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .option { border: 1.5px solid rgba(255,255,255,.12); border-radius: 12px; padding: 18px; cursor: pointer; background: #0d1320; }
+  .option:hover { border-color: rgba(56,189,248,.5); }
+  .option.selected { border-color: var(--accent); background: rgba(56,189,248,.08); }
+  .option h3 { font-size: 1rem; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+  .option .letter { width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,.1); display: inline-flex; align-items: center; justify-content: center; font-size: .8rem; }
+  .option.selected .letter { background: var(--accent); color: #04121c; }
+  .option p { font-size: .88rem; color: #cbd5e1; line-height: 1.55; }
+  .option ul { margin: 8px 0 0 18px; font-size: .84rem; color: var(--text2); line-height: 1.6; }
+</style>
+</head>
+<body>
+  <div class="page-title">Vorschlag: Feinschliff für den Desktop</div>
+  <p class="page-sub">Das Design bleibt gleich: Farben, Karten, Tabs und Split View. Geändert sind nur die Details, die oben genannt wurden. Die orangen Nummern verweisen auf die Erklärungen unter dem Mockup. Fahr mit der Maus über die Buttons, um die Tooltips zu sehen. Drück <kbd>?</kbd> oder klick auf das Tastatur-Symbol oben rechts, um die Shortcut-Übersicht zu öffnen.</p>
+
+  <div class="app" id="app">
+    <div class="hdr">
+      <div class="brand">TLDR</div>
+      <div class="tabs">
+        <span class="tab active">Tech<span class="count">8</span></span>
+        <span class="tab">AI<span class="count">12</span></span>
+        <span class="tab">Crypto<span class="count">4</span></span>
+        <span class="tab">Product</span>
+        <span class="tab">Design<span class="count">3</span></span>
+        <span class="tab">Dev<span class="count">9</span></span>
+        <span class="tab">DevOps</span>
+        <span class="tab">Marketing</span>
+        <span class="tab">Data<span class="count">2</span></span>
+        <span class="tab">Fintech</span>
+        <span class="tab">Leadership</span>
+      </div>
+      <div class="hdr-actions">
+        <button class="ibtn" data-tip="Benachrichtigungen aus">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742"/><path d="m2 2 20 20"/><path d="M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05"/></svg>
+        </button>
+        <button class="ibtn on" data-tip="Split View ausblenden   V">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+        </button>
+        <div class="sep"></div>
+        <button class="ibtn" data-tip="Tastenkürzel   ?" onclick="document.getElementById('app').classList.toggle('show-help')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="list">
+        <div class="list-bar">
+          <span class="lt"><b>8 ungelesen</b> · Stand 16:28</span>
+          <button class="tbtn" data-tip="Alle als gelesen markieren   ⇧A">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+            Alle gelesen
+          </button>
+        </div>
+        <div class="items">
+          <div class="item read">
+            <div class="txt">
+              <div class="meta"><span class="src">theverge.com</span>· Heute · 3 Min.</div>
+              <h3>Apple announces touchscreen MacBook Pro with OLED display</h3>
+              <p>The new MacBook Pro has an OLED touchscreen display. The display can achieve 2,000 nits of maximum brightness, and Apple claims it has a 10,000,000:1 contrast ratio.</p>
+            </div>
+          </div>
+          <div class="item sel">
+            <div class="txt">
+              <div class="meta"><span class="dot"></span><span class="src">venturebeat.com</span>· Heute · 17 Min.</div>
+              <h3>Google unveils Gemini 4 Carbon, retaking the world's no. 1 spot on updated, harder benchmarks — but access is limited</h3>
+              <p>Gemini 4 Carbon promises improvements in cybersecurity and complex software engineering. It is now available to selected cybersecurity defenders. A broader release will be available after Google improves guardrails on the model. Independent evaluators place it first on the Intelligence Index.</p>
+            </div>
+          </div>
+          <div class="item">
+            <div class="txt">
+              <div class="meta"><span class="dot"></span><span class="src">arstechnica.com</span>· Heute · 2 Min.</div>
+              <h3>The last, best hope for space tourism just rolled onto a runway in Arizona</h3>
+              <p>Apeiron, a Delta-class suborbital spacecraft from Virgin Galactic, is being moved from Virgin Galactic's Spaceship Factory in Mesa, Arizona, to Spaceport America in New Mexico. After its arrival, aircraft engineers and technicians will begin testing.</p>
+            </div>
+          </div>
+          <div class="item">
+            <div class="txt">
+              <div class="meta"><span class="dot"></span><span class="src">thegrid.ai</span>· Gestern · 3 Min.</div>
+              <h3>Unveiling The Grid: PCBs made in America, twice as fast as Shenzhen</h3>
+              <p>The Grid is a factory-scale robot that can build circuit boards on demand. Every board takes its own route through the factory, which has machines that print solder paste, place parts and inspect.</p>
+            </div>
+            <div class="thumb"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="reader">
+        <div class="rbar">
+          <div class="rsrc"><span class="fav">V</span>venturebeat.com</div>
+          <div class="ractions">
+            <button class="tbtn" data-tip="KI-Zusammenfassung   S">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+              Zusammenfassen
+            </button>
+            <button class="ibtn" data-tip="Teilen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+            </button>
+            <div class="sep"></div>
+            <button class="tbtn primary" data-tip="Original im Browser öffnen   O">
+              Original
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
+            </button>
+            <button class="ibtn" data-tip="Reader schließen   Esc">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="rscroll">
+          <div class="art">
+            <h1>Google unveils Gemini 4 Carbon, retaking the world's no. 1 spot on updated, harder benchmarks — but access is limited</h1>
+            <div class="ameta">28. Okt. 2026 · 12 Min. Lesezeit</div>
+            <div class="lead"></div>
+            <p>Google announced its latest and most intelligent frontier AI model today: <a>Gemini 4 Carbon</a> promises improvements in cybersecurity and complex software engineering at the same introductory token prices as its previous flagship, Argon.</p>
+            <figure><div class="img"></div><figcaption>Benchmark-Übersicht (Bild statt „[Image 1: …]“)</figcaption></figure>
+            <p>However, Google is initially granting access only to selected cybersecurity defenders in its curated "Fairwind Program", leaving most developers waiting for a broader release.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- markers -->
+    <div class="mk" style="left: 1138px; top: 13px;">1</div>
+    <div class="mk" style="left: 268px; top: 57px;">2</div>
+    <div class="mk" style="left: 410px; top: 266px;">3</div>
+    <div class="mk" style="left: 410px; top: 448px;">4</div>
+    <div class="mk" style="left: 930px; top: 57px;">5</div>
+    <div class="mk" style="left: 152px; top: 28px;">6</div>
+    <div class="mk" style="left: 1138px; top: 600px;">7</div>
+
+    <div class="ov" onclick="if(event.target===this)document.getElementById('app').classList.remove('show-help')">
+      <div class="sheet">
+        <div class="sheet-h">Tastenkürzel <button class="ibtn" onclick="document.getElementById('app').classList.remove('show-help')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+        <div class="sheet-b">
+          <div class="grp">
+            <h4>Navigation</h4>
+            <div class="row">Nächster Artikel <span class="keys"><span class="k">J</span>/<span class="k">↓</span></span></div>
+            <div class="row">Vorheriger Artikel <span class="keys"><span class="k">K</span>/<span class="k">↑</span></span></div>
+            <div class="row">Artikel weiterscrollen, am Ende nächster <span class="keys"><span class="k">Leertaste</span></span></div>
+            <div class="row">Artikel zurückscrollen <span class="keys"><span class="k">⇧</span>+<span class="k">Leertaste</span></span></div>
+            <div class="row">Im Reader öffnen <span class="keys"><span class="k">Enter</span></span></div>
+            <div class="row">Reader schließen <span class="keys"><span class="k">Esc</span></span></div>
+          </div>
+          <div class="grp">
+            <h4>Artikel</h4>
+            <div class="row">Original im Browser öffnen <span class="keys"><span class="k">O</span></span></div>
+            <div class="row">Gelesen / ungelesen <span class="keys"><span class="k">M</span></span></div>
+            <div class="row">KI-Zusammenfassung <span class="keys"><span class="k">S</span></span></div>
+            <h4 style="margin-top:14px">Feeds &amp; Ansicht</h4>
+            <div class="row">Vorheriger / nächster Feed <span class="keys"><span class="k">←</span>/<span class="k">→</span></span></div>
+            <div class="row">Alle als gelesen markieren <span class="keys"><span class="k">⇧</span>+<span class="k">A</span></span></div>
+            <div class="row">Feed aktualisieren <span class="keys"><span class="k">R</span></span></div>
+            <div class="row">Split View an / aus <span class="keys"><span class="k">V</span></span></div>
+            <div class="row">Diese Übersicht <span class="keys"><span class="k">?</span></span></div>
+          </div>
+        </div>
+        <div class="sheet-f">Diese Übersicht öffnest du jederzeit mit <span class="k">?</span>. Schließen mit <span class="k">Esc</span>.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note"><span class="n">1</span><div><b>Ruhigere Buttons oben rechts:</b> Sie haben keinen Rahmen mehr und werden erst beim Hover hinterlegt. Den Zustand siehst du an der Farbe (aktiv = blau). Der Tooltip zeigt den Namen und das Tastenkürzel. Neu ist das Tastatur-Symbol für die Shortcut-Übersicht.</div></div>
+    <div class="note"><span class="n">5</span><div><b>Die Reader-Leiste hat klare Rollen:</b> Links steht die Quelle, nur noch einmal. Rechts kommen „Zusammenfassen“ und „Teilen“, dann ein Trenner, dann „Original ↗“ als einziger hervorgehobener Button mit Beschriftung. „In neuem Tab öffnen“ entfällt, weil es dasselbe tut. Die Zusammenfassung rückt aus der Meta-Zeile in die Leiste.</div></div>
+    <div class="note"><span class="n">2</span><div><b>Listen-Aktionen über der Liste:</b> „Alle gelesen“ steht als Textbutton direkt über der Liste, auf die es wirkt (wie bei NetNewsWire und Reeder). Daneben siehst du, wie viele Artikel ungelesen sind und von wann der Stand ist.</div></div>
+    <div class="note"><span class="n">7</span><div><b>Sauberer Reader-Text:</b> Bilder aus dem Jina-Fallback werden als Bild angezeigt statt als „[Image 1: …]“. Listen und Zwischenüberschriften werden korrekt umgesetzt.</div></div>
+    <div class="note"><span class="n">3</span><div><b>Besser überfliegbare Teaser:</b> Die Meta-Zeile steht oben mit Quelle · Datum · Lesezeit. Das „(17 minute read)“ wandert aus dem Titel in die Lesezeit. Ein blauer Punkt markiert ungelesene Artikel, gelesene erkennst du am grauen Titel. Der „mehr“-Link entfällt auf dem Desktop.</div></div>
+    <div class="note"><span class="n">6</span><div><b>Ungelesen-Zahlen in den Tabs:</b> Du siehst, in welchem Feed noch etwas Neues liegt. Das ist optional und eine Idee von mir.</div></div>
+    <div class="note"><span class="n">4</span><div><b>Die Auswahl klappt auf:</b> Der gewählte Artikel zeigt seinen ganzen Teaser, die anderen bleiben bei drei Zeilen. Beim Durchgehen mit J/K liest du so jeden Teaser komplett, ohne etwas anzuklicken.</div></div>
+    <div class="note"><span class="n">–</span><div><b>Laden ohne Flackern (nicht im Bild):</b> Die Nachbarartikel werden im Hintergrund vorgeladen und erscheinen deshalb sofort. Wenn doch einmal geladen werden muss, erscheint erst nach 200 ms ein einziges dezentes Skelett, ohne Spinner und ohne Text. Auf dem Handy rutschen die Buttons nicht mehr in eine eigene Zeile.</div></div>
+  </div>
+
+  <div class="q">
+    <h2>Was soll beim Durchgehen mit J/K rechts im Reader passieren?</h2>
+    <p class="sub">Du überfliegst vor allem die Teaser und öffnest nur ab und zu einen Artikel. Klick die Variante an, die besser passt.</p>
+    <div class="opts">
+      <div class="option" data-choice="follow" onclick="toggleSelect(this)">
+        <h3><span class="letter">A</span>Reader folgt der Auswahl</h3>
+        <p>So wie heute: Jeder Druck auf J/K zeigt den Artikel rechts sofort an, dank Vorladen ohne Ladeanzeige.</p>
+        <ul><li>Jeder Artikel, an dem du vorbeikommst, gilt als gelesen</li><li>Rechts ist immer etwas zu sehen</li></ul>
+      </div>
+      <div class="option" data-choice="skim" onclick="toggleSelect(this)">
+        <h3><span class="letter">B</span>Erst überfliegen, dann öffnen</h3>
+        <p>J/K bewegt nur die Auswahl in der Liste, der Teaser klappt komplett auf. Der Reader rechts öffnet erst mit Enter, Leertaste oder Klick.</p>
+        <ul><li>Als gelesen gilt nur, was du wirklich öffnest (oder per M markierst)</li><li>Rechts bleibt der zuletzt geöffnete Artikel stehen</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '?') document.getElementById('app').classList.toggle('show-help');
+      if (e.key === 'Escape') document.getElementById('app').classList.remove('show-help');
+    });
+  </script>
+</body>
+</html>
