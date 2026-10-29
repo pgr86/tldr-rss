@@ -354,7 +354,9 @@ function parseRawHtmlToArticle(
   const parsedArticle = reader.parse();
 
   const title =
-    parsedArticle?.title?.trim() || doc.title?.trim() || `Artikel auf ${domain}`;
+    parsedArticle?.title?.trim() ||
+    doc.title?.trim() ||
+    `Artikel auf ${domain}`;
   const rawContentHtml = parsedArticle?.content || "";
   if (
     !rawContentHtml ||
@@ -625,6 +627,14 @@ export const renderReaderHtml = (
         .back-btn {
             height: 40px;
             padding-left: 8px;
+        }
+
+        #save-btn.is-saved {
+            color: var(--accent-color);
+        }
+
+        #save-btn.is-saved svg {
+            fill: currentColor;
         }
 
         .toolbar-sep,
@@ -1115,6 +1125,9 @@ export const renderReaderHtml = (
         </div>
         <div class="header-title" aria-hidden="true">${escapeHtml(article.title)}</div>
         <div class="nav-actions">
+            <button class="btn icon-btn" type="button" id="save-btn" aria-label="Merken" aria-pressed="false" data-tip="${tip("Merken", "save")}">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            </button>
             <button class="btn icon-btn" type="button" id="share-btn" aria-label="Teilen" data-tip="${tip("Teilen")}" hidden>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
             </button>
@@ -1231,7 +1244,7 @@ export const renderReaderHtml = (
                 shareButton.parentNode.insertBefore(summaryButton, shareButton);
             }
             // Shortcuts are handled by the feed page; arrow keys keep scrolling the article
-            const FORWARDED_KEYS = ['j', 'k', 'J', 'K', ' ', 'Enter', 'o', 'O', 'm', 'M', 's', 'S', 'r', 'R', 'v', 'V', 'a', 'A', '?', 'Escape'];
+            const FORWARDED_KEYS = ['j', 'k', 'J', 'K', ' ', 'Enter', 'o', 'O', 'm', 'M', 'f', 'F', 's', 'S', 'r', 'R', 'v', 'V', 'a', 'A', '?', 'Escape'];
             window.addEventListener('keydown', (e) => {
                 if (e.metaKey || e.ctrlKey || e.altKey || !FORWARDED_KEYS.includes(e.key)) return;
                 const target = e.target;
@@ -1249,6 +1262,56 @@ export const renderReaderHtml = (
             try {
                 window.parent.postMessage({ type: 'reader-ready', url: articleLink }, '*');
             } catch (e) {}
+        }
+
+        // Merkliste: in the split view the feed page owns the state, on its own the reader asks the server
+        const saveBtn = document.getElementById('save-btn');
+        const SAVED_STATUS_KEY = 'tldr-saved-status';
+        const setSaveState = (saved) => {
+            saveBtn.classList.toggle('is-saved', saved);
+            saveBtn.setAttribute('aria-pressed', saved ? 'true' : 'false');
+            saveBtn.setAttribute('aria-label', saved ? 'Von der Merkliste entfernen' : 'Merken');
+        };
+        const withPassword = (path) => password ? path + '&password=' + encodeURIComponent(password) : path;
+        if (isEmbedded) {
+            window.addEventListener('message', (e) => {
+                if (e.origin !== window.location.origin || !e.data || e.data.type !== 'save-state') return;
+                if (e.data.url === articleLink) setSaveState(!!e.data.saved);
+            });
+            saveBtn.addEventListener('click', () => {
+                window.parent.postMessage({ type: 'toggle-save', url: articleLink }, window.location.origin);
+            });
+        } else if (articleLink) {
+            fetch(withPassword('/save-status?link=' + encodeURIComponent(articleLink)), { credentials: 'same-origin', cache: 'no-store' })
+                .then(res => res.ok ? res.json() : null)
+                .then(data => { if (data) setSaveState(!!data.saved); })
+                .catch(() => {});
+            saveBtn.addEventListener('click', () => {
+                const saved = !saveBtn.classList.contains('is-saved');
+                setSaveState(saved);
+                window.tldrApp.haptic();
+                fetch(withPassword((saved ? '/save' : '/unsave') + '?link=' + encodeURIComponent(articleLink)), {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: ${JSON.stringify(article.title).replace(/</g, "\\u003c")} })
+                }).then(res => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    // The feed list picks this up even when it comes back from the cache
+                    try {
+                        const status = JSON.parse(localStorage.getItem(SAVED_STATUS_KEY) || '{}');
+                        delete status[articleLink];
+                        status[articleLink] = { saved: saved, at: Date.now() };
+                        localStorage.setItem(SAVED_STATUS_KEY, JSON.stringify(status));
+                    } catch (err) {}
+                    window.tldrApp.toast(saved ? 'Gemerkt' : 'Von der Merkliste entfernt');
+                }).catch(() => {
+                    setSaveState(!saved);
+                    window.tldrApp.toast(navigator.onLine ? 'Merken fehlgeschlagen' : 'Du bist offline');
+                });
+            });
+        } else {
+            saveBtn.hidden = true;
         }
 
         // Native share sheet where available

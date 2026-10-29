@@ -1,6 +1,6 @@
 // Service worker: instant launches from cache, offline reading and a fallback page.
 // Bump VERSION whenever the caching strategy or the shell assets change.
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL_CACHE = `tldr-shell-${VERSION}`;
 const PAGE_CACHE = `tldr-pages-${VERSION}`;
 const READER_CACHE = `tldr-reader-${VERSION}`;
@@ -46,6 +46,9 @@ const isFeedPage = (url) =>
   /^\/[^/]+\.html$/.test(url.pathname) &&
   url.pathname !== "/index.html" &&
   url.pathname !== "/offline.html";
+
+// The Merkliste changes with every article saved elsewhere in the app, so it is never served stale
+const isSavedPage = (url) => url.pathname === "/saved.html";
 
 const isReaderPage = (url) =>
   url.pathname === "/reader" || url.pathname === "/article";
@@ -113,6 +116,18 @@ const handleFeedPage = async (event, url) => {
   }
 };
 
+// Network first, the last copy only serves offline
+const handleSavedPage = async (event, url) => {
+  const key = url.href;
+  try {
+    const response = await withTimeout(fetchFromNetwork(event), NETWORK_TIMEOUT_MS);
+    event.waitUntil(putInCache(PAGE_CACHE, key, response.clone()));
+    return response;
+  } catch (error) {
+    return (await caches.match(key, { ignoreVary: true })) || offlineResponse();
+  }
+};
+
 // Articles don't change: cache first, so previously opened ones load instantly and offline
 const handleReaderPage = async (event, url) => {
   const key = url.href;
@@ -155,6 +170,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.origin !== self.location.origin) return;
+
+  if (isSavedPage(url)) {
+    event.respondWith(handleSavedPage(event, url));
+    return;
+  }
 
   if (isFeedPage(url)) {
     event.respondWith(handleFeedPage(event, url));

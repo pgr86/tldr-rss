@@ -10,6 +10,7 @@ export type ShortcutId =
   | "close"
   | "original"
   | "toggleRead"
+  | "save"
   | "summary"
   | "feedNav"
   | "markAll"
@@ -49,6 +50,7 @@ export const SHORTCUT_GROUPS: { title: string; items: Shortcut[] }[] = [
     items: [
       { id: "original", label: "Original im Browser öffnen", keys: [["O"]] },
       { id: "toggleRead", label: "Gelesen / ungelesen", keys: [["M"]] },
+      { id: "save", label: "Merken / nicht mehr merken", keys: [["F"]] },
       { id: "summary", label: "KI-Zusammenfassung", keys: [["S"]] },
     ],
   },

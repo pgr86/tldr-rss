@@ -1,7 +1,14 @@
+import {
+  addBookmark,
+  getBookmarkedLinks,
+  getBookmarks,
+  isBookmarked,
+  removeBookmark,
+} from "../src/bookmarks";
 import { getCache } from "../src/cache";
 import { FEEDS, isSupportedFeed } from "../src/config";
 import { fetchAllFeeds, fetchFeedNews } from "../src/feed";
-import { renderHtmlFeed } from "../src/html";
+import { renderHtmlFeed, renderSavedFeed } from "../src/html";
 import { linkHash } from "../src/postMeta";
 import {
   addSubscription,
@@ -326,6 +333,38 @@ export default async function handler(
     return;
   }
 
+  // Merkliste API routes: save a snapshot of an article, remove it, query its state
+  if (pathname === "/save" || pathname === "/unsave") {
+    res.setHeader("Cache-Control", "no-store");
+    const link = getQueryParam(req.query?.link) || url.searchParams.get("link");
+    if (!link) {
+      res.status(400).json({ error: "Missing link parameter" });
+      return;
+    }
+    if (pathname === "/unsave") {
+      removeBookmark(link);
+      res.status(200).json({ success: true, saved: false });
+      return;
+    }
+    if (!addBookmark(link, parseJsonBody(req.body))) {
+      res.status(404).json({ error: "Unknown article" });
+      return;
+    }
+    res.status(200).json({ success: true, saved: true });
+    return;
+  }
+
+  if (pathname === "/save-status") {
+    res.setHeader("Cache-Control", "no-store");
+    const link = getQueryParam(req.query?.link) || url.searchParams.get("link");
+    if (!link) {
+      res.status(400).json({ error: "Missing link parameter" });
+      return;
+    }
+    res.status(200).json({ saved: isBookmarked(link) });
+    return;
+  }
+
   const feed = getQueryParam(req.query?.feed) || url.searchParams.get("feed");
   const format =
     getQueryParam(req.query?.format) || url.searchParams.get("format") || "rss";
@@ -335,6 +374,14 @@ export default async function handler(
       error: "Missing feed parameter",
       supportedFeeds: [...FEEDS, "feed"],
     });
+    return;
+  }
+
+  // The Merkliste spans all feeds and only exists as a page
+  if (feed === "saved" && format === "html") {
+    res.setHeader("Cache-Control", "private, no-cache");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.status(200).send(renderSavedFeed(getBookmarks(), collectFeedLinks()));
     return;
   }
 
@@ -391,7 +438,15 @@ export default async function handler(
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res
       .status(200)
-      .send(renderHtmlFeed(baseFeed, filteredNews, 50, collectFeedLinks()));
+      .send(
+        renderHtmlFeed(
+          baseFeed,
+          filteredNews,
+          50,
+          collectFeedLinks(),
+          getBookmarkedLinks(),
+        ),
+      );
     return;
   }
 

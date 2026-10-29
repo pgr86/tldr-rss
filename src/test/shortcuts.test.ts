@@ -14,6 +14,7 @@ const LABELS = [
   "Reader schließen",
   "Original im Browser öffnen",
   "Gelesen / ungelesen",
+  "Merken / nicht mehr merken",
   "KI-Zusammenfassung",
   "Vorheriger / nächster Feed",
   "Alle als gelesen markieren",

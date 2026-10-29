@@ -1,5 +1,6 @@
 import { writeFile } from "fs/promises";
 
+import type { SavedArticle } from "./bookmarks";
 import { FEEDS } from "./config";
 import { sourceHost, splitReadingTime } from "./postMeta";
 import { PWA_BODY_END, renderPwaBodyStart, renderPwaHead } from "./pwa";
@@ -13,7 +14,14 @@ type Post = {
   content: string;
   link: string;
   image?: string;
+  /** Feed the post comes from, shown on the Merkliste */
+  feed?: string;
 };
+
+const SAVED_FEED = "saved";
+
+const BOOKMARK_ICON = (size: number): string =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>`;
 
 /**
  * Generates a minimal HTML page listing articles for AI consumption
@@ -75,14 +83,22 @@ export const getDisplayName = (feed: string): string => {
   return feed.charAt(0).toUpperCase() + feed.slice(1);
 };
 
+const getPageTitle = (feedName: string): string => {
+  if (feedName === SAVED_FEED) return "Merkliste";
+  if (feedName === "leadership") return "Leadership in Tech";
+  return `TLDR ${getDisplayName(feedName)}`;
+};
+
 /**
  * @param feedLinks - Hashed links (see linkHash) of the other feeds, for the unread counts on the tabs
+ * @param savedLinks - Links on the Merkliste
  */
 export const renderHtmlFeed = (
   feedName: string,
   posts: Post[],
   maxArticles = 50,
   feedLinks: Record<string, string[]> = {},
+  savedLinks: string[] = [],
 ): string => {
   if (posts.length === 0) {
     throw new Error(`No posts found for ${feedName}`);
@@ -96,14 +112,42 @@ export const renderHtmlFeed = (
     )
     .slice(0, maxArticles);
 
-  const formattedFeedName = getDisplayName(feedName);
+  return renderFeedPage(feedName, sortedPosts, feedLinks, savedLinks);
+};
 
-  // Generate tab HTML links
-  const tabsHtml = FEEDS.map((f) => {
-    const active = f === feedName;
-    const displayName = getDisplayName(f);
-    return `<a href="/${f}.html" class="tab-btn ${active ? "active" : ""}" data-feed="${f}">${displayName}<span class="tab-count" hidden></span></a>`;
-  }).join("\n                ");
+/** The Merkliste: saved articles of all feeds, most recently saved first */
+export const renderSavedFeed = (
+  saved: SavedArticle[],
+  feedLinks: Record<string, string[]> = {},
+): string =>
+  renderFeedPage(
+    SAVED_FEED,
+    saved,
+    feedLinks,
+    saved.map((bookmark) => bookmark.link),
+  );
+
+const renderFeedPage = (
+  feedName: string,
+  sortedPosts: Post[],
+  feedLinks: Record<string, string[]>,
+  savedLinks: string[],
+): string => {
+  const isSavedView = feedName === SAVED_FEED;
+  const pageTitle = getPageTitle(feedName);
+  const savedSet = new Set(savedLinks);
+
+  // Generate tab HTML links, the Merkliste first
+  const savedTab = `<a href="/${SAVED_FEED}.html" class="tab-btn tab-saved ${isSavedView ? "active" : ""}" data-feed="${SAVED_FEED}">${BOOKMARK_ICON(12)}Merkliste<span class="tab-count" hidden></span></a>
+                <span class="tab-divider" aria-hidden="true"></span>`;
+  const tabsHtml = [
+    savedTab,
+    ...FEEDS.map((f) => {
+      const active = f === feedName;
+      const displayName = getDisplayName(f);
+      return `<a href="/${f}.html" class="tab-btn ${active ? "active" : ""}" data-feed="${f}">${displayName}<span class="tab-count" hidden></span></a>`;
+    }),
+  ].join("\n                ");
 
   // Generate responsive, beautiful HTML optimized for Vivaldi sidebar and panels
   return `<!DOCTYPE html>
@@ -113,8 +157,8 @@ export const renderHtmlFeed = (
     ${renderPwaHead()}
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
     <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet">
-    <meta name="description" content="${feedName === "leadership" ? "Leadership in Tech Feed Reader" : `TLDR ${formattedFeedName} Feed Reader`}">
-    <title>${feedName === "leadership" ? "Leadership in Tech" : `TLDR ${formattedFeedName}`}</title>
+    <meta name="description" content="${pageTitle} Feed Reader">
+    <title>${pageTitle}</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -386,6 +430,24 @@ export const renderHtmlFeed = (
             font-weight: 500;
             opacity: 0.6;
             font-variant-numeric: tabular-nums;
+        }
+
+        .tab-saved {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .tab-saved svg {
+            flex-shrink: 0;
+        }
+
+        .tab-divider {
+            width: 1px;
+            height: 16px;
+            margin: 0 3px;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.1);
         }
 
         .tab-btn.active {
@@ -772,6 +834,135 @@ export const renderHtmlFeed = (
             pointer-events: none;
         }
 
+        /* Merken: icon button in the card's top-right corner, next to the meta row */
+        .feed-meta {
+            padding-right: 26px;
+        }
+
+        .save-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            z-index: 3;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 7px;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+        }
+
+        .feed-item.has-thumb .save-btn {
+            right: 80px;
+        }
+
+        @media (hover: hover) {
+            .feed-item:not(.is-saved) .save-btn {
+                opacity: 0;
+            }
+
+            .feed-item:hover .save-btn,
+            .feed-item.is-selected .save-btn {
+                opacity: 1;
+            }
+
+            .save-btn:hover {
+                color: var(--text-primary);
+                background: rgba(255, 255, 255, 0.07);
+            }
+        }
+
+        .feed-item .save-btn:focus-visible {
+            opacity: 1;
+            outline: 2px solid var(--accent-color);
+            outline-offset: 1px;
+        }
+
+        .save-btn:active {
+            transform: scale(0.88);
+        }
+
+        .feed-item.is-saved .save-btn {
+            opacity: 1;
+            color: var(--accent-color);
+        }
+
+        .feed-item.is-saved .save-btn svg {
+            fill: currentColor;
+        }
+
+        .feed-item.swiping-left .save-btn,
+        .feed-item.swiping-right .save-btn {
+            opacity: 0;
+        }
+
+        .save-btn.is-popping svg {
+            animation: save-pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        @keyframes save-pop {
+            40% { transform: scale(1.3); }
+        }
+
+        .feed-origin {
+            color: var(--accent-color);
+            font-size: 0.64rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .saved-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding: 56px 24px;
+            color: var(--text-secondary);
+        }
+
+        .saved-empty-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            color: var(--accent-color);
+            background: rgba(56, 189, 248, 0.08);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+
+        .saved-empty h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .saved-empty p {
+            max-width: 320px;
+            font-size: 0.84rem;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+
+        .saved-empty kbd {
+            padding: 1px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.08);
+            font: 600 0.72rem var(--font-family);
+            color: var(--text-secondary);
+        }
+
         footer {
             background-color: var(--card-bg);
             border-top: 1px solid var(--border-color);
@@ -1134,7 +1325,7 @@ export const renderHtmlFeed = (
     <header>
         <div class="header-content">
             <div class="header-brand">
-                <h1>${feedName === "leadership" ? "Leadership in Tech" : `TLDR ${formattedFeedName}`}</h1>
+                <h1>${pageTitle}</h1>
             </div>
             <div class="feed-tabs-container">
                 <nav class="feed-tabs">
@@ -1198,13 +1389,27 @@ export const renderHtmlFeed = (
                 </button>
             </div>
             <main class="feed-list">
+        ${
+          isSavedView && sortedPosts.length === 0
+            ? `<div class="saved-empty" id="saved-empty">
+                <div class="saved-empty-icon">${BOOKMARK_ICON(24)}</div>
+                <h2>Noch nichts gemerkt</h2>
+                <p>Merke dir Artikel aus allen Ausgaben mit dem Lesezeichen auf der Karte oder mit <kbd>F</kbd>. Sie landen dann hier.</p>
+            </div>`
+            : ""
+        }
         ${sortedPosts
           .map((post, index) => {
             const read = isRead(post.link);
+            const saved = savedSet.has(post.link);
+            const postFeed = post.feed || (isSavedView ? "" : feedName);
             const readerHref = `/reader?url=${encodeURIComponent(post.link)}`;
             const { title, minutes } = splitReadingTime(post.title);
             const host = sourceHost(post.link);
             const metaParts = [
+              isSavedView && post.feed
+                ? `<span class="feed-origin">${escapeHtml(getDisplayName(post.feed))}</span>`
+                : "",
               host
                 ? `<span class="feed-source">${escapeHtml(host)}</span>`
                 : "",
@@ -1213,7 +1418,13 @@ export const renderHtmlFeed = (
                 ? `<span class="feed-reading-time">${minutes} Min.</span>`
                 : "",
             ].filter(Boolean);
-            return `        <article class="feed-item ${read ? "is-read" : ""}" style="--i: ${index}" data-link="${escapeHtmlAttr(post.link)}">
+            const classes = [
+              "feed-item",
+              read ? "is-read" : "",
+              saved ? "is-saved" : "",
+              post.image ? "has-thumb" : "",
+            ].filter(Boolean);
+            return `        <article class="${classes.join(" ")}" style="--i: ${index}" data-link="${escapeHtmlAttr(post.link)}" data-feed="${escapeHtmlAttr(postFeed)}">
             <a href="${escapeHtmlAttr(readerHref)}" onclick="markAsRead(this.closest('.feed-item').dataset.link, this)" target="_blank" class="feed-link" rel="noopener noreferrer">
                 <div class="feed-content-wrapper">
                     <div class="feed-text-block">
@@ -1233,6 +1444,7 @@ export const renderHtmlFeed = (
                     <span class="more-link" role="button" tabindex="0">mehr</span>
                 </div>
             </a>
+            <button type="button" class="save-btn" aria-pressed="${saved ? "true" : "false"}" aria-label="${saved ? "Von der Merkliste entfernen" : "Merken"}" data-tip="${tip("Merken", "save")}">${BOOKMARK_ICON(16)}</button>
         </article>`;
           })
           .join("\n")}
@@ -1285,6 +1497,7 @@ export const renderHtmlFeed = (
         </aside>
     </div>
     <script type="application/json" id="feed-links">${JSON.stringify(feedLinks).replace(/</g, "\\u003c")}</script>
+    <script type="application/json" id="saved-links">${JSON.stringify(savedLinks).replace(/</g, "\\u003c")}</script>
     <script>
         const feedList = document.querySelector('main.feed-list');
         const SCROLL_KEY = 'tldr-scroll:' + location.pathname + location.search;
@@ -1361,9 +1574,10 @@ export const renderHtmlFeed = (
         function updateUnreadCount() {
             const unread = document.querySelectorAll('.feed-item:not(.is-read)').length;
             const label = document.getElementById('unread-count');
-            if (label) label.textContent = unread === 0 ? 'Alles gelesen' : unread + ' ungelesen';
+            const hasItems = !!document.querySelector('.feed-item');
+            if (label) label.textContent = !hasItems ? 'Keine Artikel' : unread === 0 ? 'Alles gelesen' : unread + ' ungelesen';
             const hint = document.getElementById('all-read-hint');
-            if (hint) hint.hidden = unread > 0;
+            if (hint) hint.hidden = unread > 0 || !hasItems;
             updateTabCounts(unread);
         }
 
@@ -1397,7 +1611,8 @@ export const renderHtmlFeed = (
             });
             document.querySelectorAll('.tab-btn').forEach(tab => {
                 const count = tab.querySelector('.tab-count');
-                if (!count) return;
+                // The Merkliste counts saved articles instead (see applySavedStatus)
+                if (!count || tab.dataset.feed === 'saved') return;
                 const links = FEED_LINKS[tab.dataset.feed];
                 const unread = tab.classList.contains('active')
                     ? activeUnread
@@ -1483,6 +1698,156 @@ export const renderHtmlFeed = (
 
             postReadStatus('/mark-unread', 'link', link)
                 .catch(err => console.error('Failed to mark unread status:', err));
+        }
+
+        // Merkliste: the server keeps the saved articles. Local changes made after this page was
+        // generated win, so a copy served from the service worker cache still shows them right away.
+        const SAVED_STATUS_KEY = 'tldr-saved-status';
+        const MAX_SAVED_STATUS_ENTRIES = 300;
+
+        function readSavedLinks(doc) {
+            try {
+                const element = doc.getElementById('saved-links');
+                const links = element ? JSON.parse(element.textContent || '[]') : null;
+                return Array.isArray(links) ? links : null;
+            } catch (err) {
+                return null;
+            }
+        }
+
+        let SAVED_LINKS = new Set(readSavedLinks(document) || []);
+
+        function loadLocalSavedStatus() {
+            try {
+                const data = JSON.parse(localStorage.getItem(SAVED_STATUS_KEY) || '{}');
+                return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+            } catch (err) {
+                return {};
+            }
+        }
+
+        function saveLocalSavedStatus(link, saved) {
+            try {
+                const status = loadLocalSavedStatus();
+                delete status[link];
+                status[link] = { saved: saved, at: Date.now() };
+                const keys = Object.keys(status);
+                keys.slice(0, Math.max(0, keys.length - MAX_SAVED_STATUS_ENTRIES)).forEach(key => delete status[key]);
+                localStorage.setItem(SAVED_STATUS_KEY, JSON.stringify(status));
+            } catch (err) {
+                console.error('Failed to store saved status locally:', err);
+            }
+        }
+
+        function getSavedLinks() {
+            const generated = Number(document.body.dataset.generated || 0);
+            const links = new Set(SAVED_LINKS);
+            const status = loadLocalSavedStatus();
+            Object.keys(status).forEach(link => {
+                const entry = status[link];
+                if (!entry || typeof entry.at !== 'number' || entry.at <= generated) return;
+                if (entry.saved) {
+                    links.add(link);
+                } else {
+                    links.delete(link);
+                }
+            });
+            return links;
+        }
+
+        function applySavedStatus() {
+            const saved = getSavedLinks();
+            document.querySelectorAll('.feed-item[data-link]').forEach(card => {
+                const isSaved = saved.has(card.dataset.link);
+                card.classList.toggle('is-saved', isSaved);
+                const btn = card.querySelector('.save-btn');
+                if (!btn) return;
+                btn.setAttribute('aria-pressed', isSaved ? 'true' : 'false');
+                btn.setAttribute('aria-label', isSaved ? 'Von der Merkliste entfernen' : 'Merken');
+            });
+            const count = document.querySelector('.tab-btn[data-feed="saved"] .tab-count');
+            if (count) {
+                count.textContent = String(saved.size);
+                count.hidden = saved.size === 0;
+            }
+            sendSaveStateToReader();
+        }
+
+        // What the server stores when the article has already left its feed cache
+        function cardDetails(card) {
+            if (!card) return {};
+            const text = (selector) => {
+                const element = card.querySelector(selector);
+                return element ? element.textContent.trim() : '';
+            };
+            const time = card.querySelector('time');
+            const image = card.querySelector('.feed-thumbnail');
+            return {
+                title: text('.feed-item-title'),
+                content: text('.feed-item-description'),
+                date: time ? time.getAttribute('datetime') : '',
+                image: image ? image.getAttribute('src') : '',
+                feed: card.dataset.feed || ''
+            };
+        }
+
+        function postSaveStatus(link, saved, details) {
+            const params = new URLSearchParams({ link: link });
+            const password = new URLSearchParams(window.location.search).get('password');
+            if (password) params.set('password', password);
+            return fetch((saved ? '/save' : '/unsave') + '?' + params.toString(), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(details || {}),
+                keepalive: true
+            }).then(res => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+            });
+        }
+
+        function setSaved(link, saved) {
+            if (!link) return;
+            const card = findItem(link);
+            const wasSaved = getSavedLinks().has(link);
+            saveLocalSavedStatus(link, saved);
+            applySavedStatus();
+            const btn = card ? card.querySelector('.save-btn') : null;
+            if (btn && saved) {
+                btn.classList.remove('is-popping');
+                void btn.offsetWidth;
+                btn.classList.add('is-popping');
+            }
+            window.tldrApp.haptic();
+            window.tldrApp.toast(saved ? 'Gemerkt' : 'Von der Merkliste entfernt');
+            postSaveStatus(link, saved, saved ? cardDetails(card) : null).catch(err => {
+                console.error('Failed to update the Merkliste:', err);
+                saveLocalSavedStatus(link, wasSaved);
+                applySavedStatus();
+                window.tldrApp.toast(navigator.onLine ? 'Merken fehlgeschlagen' : 'Du bist offline');
+            });
+        }
+
+        function toggleSaved(link) {
+            if (link) setSaved(link, !getSavedLinks().has(link));
+        }
+
+        // The reader in the split view shows whether its article is saved
+        function sendSaveStateToReader() {
+            const frame = document.getElementById('reader-frame');
+            if (!openLink || !frame || !frame.contentWindow) return;
+            frame.contentWindow.postMessage({ type: 'save-state', url: openLink, saved: getSavedLinks().has(openLink) }, window.location.origin);
+        }
+
+        // Delegated so refreshed items are covered as well
+        function initSaveButtons() {
+            feedList.addEventListener('click', (e) => {
+                const btn = e.target.closest('.save-btn');
+                if (!btn) return;
+                e.preventDefault();
+                const card = btn.closest('.feed-item');
+                if (card) toggleSaved(card.dataset.link);
+            });
         }
 
         // Initialize mouse drag scrolling for tab bar
@@ -1643,7 +2008,7 @@ export const renderHtmlFeed = (
 
                 item.addEventListener('mousedown', (e) => {
                     if (e.button !== 0) return;
-                    if (e.target.closest('.more-link')) return;
+                    if (e.target.closest('.more-link, .save-btn')) return;
 
                     isMouseDown = true;
                     startX = e.clientX;
@@ -2126,6 +2491,11 @@ export const renderHtmlFeed = (
                 }
                 return true;
             }
+            if (letter === 'f') {
+                if (!selected) return false;
+                toggleSaved(selected.dataset.link);
+                return true;
+            }
             if (letter === 's') {
                 const win = getReaderWindow();
                 const summaryBtn = win ? win.document.getElementById('summary-btn') : null;
@@ -2220,6 +2590,9 @@ export const renderHtmlFeed = (
                 if (e.origin !== window.location.origin) return;
                 if (e.data && e.data.type === 'reader-ready') {
                     revealReader(e.data.url);
+                    sendSaveStateToReader();
+                } else if (e.data && e.data.type === 'toggle-save') {
+                    toggleSaved(e.data.url || openLink);
                 } else if (e.data && e.data.type === 'reader-keydown') {
                     handleShortcut(e.data.key, !!e.data.shiftKey, !!e.data.repeat);
                 } else if (e.data && e.data.type === 'close-reader') {
@@ -2282,6 +2655,9 @@ export const renderHtmlFeed = (
                 FEED_LINKS = freshLinks;
                 updateUnreadCount();
             }
+            const freshSaved = readSavedLinks(doc);
+            if (freshSaved) SAVED_LINKS = new Set(freshSaved);
+            applySavedStatus();
         }
 
         function applyFeed(doc, addedLinks) {
@@ -2298,6 +2674,7 @@ export const renderHtmlFeed = (
                 });
                 prepareLinks(feedList);
                 applyLocalReadStatus();
+                applySavedStatus();
                 const selectedItem = findItem(selectedLink);
                 if (selectedItem) selectedItem.classList.add('is-selected');
                 markOpenItem();
@@ -2557,6 +2934,8 @@ export const renderHtmlFeed = (
 
         function initAll() {
             applyLocalReadStatus();
+            applySavedStatus();
+            initSaveButtons();
             updateFeedStand();
             initTabScrolling();
             initSwipeGestures(document.querySelectorAll('.feed-item'));
@@ -2572,6 +2951,7 @@ export const renderHtmlFeed = (
             window.addEventListener('pageshow', (e) => {
                 if (e.persisted) {
                     applyLocalReadStatus();
+                    applySavedStatus();
                     refreshIfStale();
                 }
             });
