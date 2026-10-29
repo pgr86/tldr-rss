@@ -1237,10 +1237,14 @@ export const renderReaderHtml = (
                 const target = e.target;
                 const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
                 if (tag === 'input' || tag === 'textarea' || tag === 'select' || (target && target.isContentEditable)) return;
-                if ((e.key === 'Enter' || e.key === ' ') && target && target.closest && target.closest('button, a, [role="button"]')) return;
+                // Keyboard-focused buttons (and links, for Enter) keep their native activation
+                if ((e.key === ' ' || e.key === 'Enter') && target && target.closest) {
+                    const control = target.closest(e.key === ' ' ? 'button, [role="button"]' : 'button, a, [role="button"]');
+                    if (control && control.matches(':focus-visible')) return;
+                }
                 if ((e.key === 'a' || e.key === 'A') && !e.shiftKey) return;
                 e.preventDefault();
-                window.parent.postMessage({ type: 'reader-keydown', key: e.key, shiftKey: e.shiftKey }, window.location.origin);
+                window.parent.postMessage({ type: 'reader-keydown', key: e.key, shiftKey: e.shiftKey, repeat: e.repeat }, window.location.origin);
             });
             try {
                 window.parent.postMessage({ type: 'reader-ready', url: articleLink }, '*');

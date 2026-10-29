@@ -1377,13 +1377,16 @@ export const renderHtmlFeed = (
             return (hash >>> 0).toString(36);
         }
 
-        const FEED_LINKS = (() => {
+        function readFeedLinks(doc) {
             try {
-                return JSON.parse(document.getElementById('feed-links').textContent || '{}');
+                const element = doc.getElementById('feed-links');
+                return element ? JSON.parse(element.textContent || '{}') : null;
             } catch (err) {
-                return {};
+                return null;
             }
-        })();
+        }
+
+        let FEED_LINKS = readFeedLinks(document) || {};
 
         // Unread counts on the tabs: the other feeds come from the server cache as hashed links
         function updateTabCounts(activeUnread) {
@@ -1746,6 +1749,8 @@ export const renderHtmlFeed = (
         let openLink = null;
         let readerLoadTimer = null;
         let skeletonTimer = null;
+        // False from opening an article until its page has rendered in the reader
+        let readerReady = false;
         const SKELETON_DELAY_MS = 200;
         const prefetchedReaderLinks = new Set();
         let prefetchInFlight = false;
@@ -1800,9 +1805,12 @@ export const renderHtmlFeed = (
 
         function revealReader(url) {
             if (url && openLink && url !== openLink) return;
+            readerReady = true;
             clearReaderTimers();
             const loadingState = document.getElementById('reader-loading-state');
             if (loadingState) loadingState.hidden = true;
+            const errorState = document.getElementById('reader-error-state');
+            if (errorState) errorState.hidden = true;
             const frame = document.getElementById('reader-frame');
             if (frame) frame.classList.remove('is-loading', 'is-stale');
 
@@ -1831,6 +1839,7 @@ export const renderHtmlFeed = (
             if (!link) return;
 
             openLink = link;
+            readerReady = false;
             if (cardElement) {
                 selectItem(cardElement);
             } else {
@@ -1915,10 +1924,20 @@ export const renderHtmlFeed = (
             }
         }
 
+        // A focused iframe would keep swallowing the shortcuts once its article is gone
+        function releaseReaderFocus() {
+            const frame = document.getElementById('reader-frame');
+            if (frame && document.activeElement === frame) {
+                frame.blur();
+                window.focus();
+            }
+        }
+
         // Closes the article; the selection stays so skimming can continue
         function closeSplitView() {
             openLink = null;
             markOpenItem();
+            releaseReaderFocus();
 
             clearReaderTimers();
             const emptyState = document.getElementById('reader-empty-state');
@@ -1945,6 +1964,7 @@ export const renderHtmlFeed = (
             const layout = document.querySelector('.app-layout');
             if (!layout) return;
             const isClosed = layout.classList.toggle('split-closed');
+            if (isClosed) releaseReaderFocus();
             const toggleBtn = document.getElementById('split-toggle-btn');
             if (toggleBtn) {
                 toggleBtn.classList.toggle('is-on', !isClosed);
@@ -1970,9 +1990,9 @@ export const renderHtmlFeed = (
         function pageReader(direction) {
             const win = getReaderWindow();
             if (!win) return false;
-            const frame = document.getElementById('reader-frame');
-            // Still loading: swallow the key instead of jumping to the next article
-            if (frame.classList.contains('is-loading')) return true;
+            // Still loading (the frame may still show the previous page):
+            // swallow the key instead of jumping past an article nobody has seen
+            if (!readerReady) return true;
 
             const root = win.document.documentElement;
             if (direction > 0 && win.scrollY + win.innerHeight >= root.scrollHeight - 4) return false;
@@ -1987,16 +2007,20 @@ export const renderHtmlFeed = (
         }
 
         let dialogReturnFocus = null;
+        let dialogRestoreFocus = true;
 
         function isShortcutDialogOpen() {
             const dialog = document.getElementById('shortcut-dialog');
             return !!dialog && !dialog.hidden;
         }
 
-        function openShortcutDialog() {
+        // restoreFocus: false when opened with the mouse, so focus doesn't land on the icon
+        // as keyboard focus afterwards (Space would reopen the dialog instead of reading on)
+        function openShortcutDialog(restoreFocus) {
             const dialog = document.getElementById('shortcut-dialog');
             if (!dialog || !dialog.hidden) return;
             dialogReturnFocus = document.activeElement;
+            dialogRestoreFocus = restoreFocus !== false;
             dialog.hidden = false;
             const closeBtn = document.getElementById('shortcut-dialog-close');
             if (closeBtn) closeBtn.focus();
@@ -2006,7 +2030,9 @@ export const renderHtmlFeed = (
             const dialog = document.getElementById('shortcut-dialog');
             if (!dialog || dialog.hidden) return;
             dialog.hidden = true;
-            if (dialogReturnFocus && typeof dialogReturnFocus.focus === 'function') dialogReturnFocus.focus();
+            if (dialogRestoreFocus && dialogReturnFocus && typeof dialogReturnFocus.focus === 'function') {
+                dialogReturnFocus.focus();
+            }
             dialogReturnFocus = null;
         }
 
@@ -2014,7 +2040,8 @@ export const renderHtmlFeed = (
             const dialog = document.getElementById('shortcut-dialog');
             const openBtn = document.getElementById('shortcuts-btn');
             const closeBtn = document.getElementById('shortcut-dialog-close');
-            if (openBtn) openBtn.addEventListener('click', openShortcutDialog);
+            // detail is 0 for keyboard activation of the button
+            if (openBtn) openBtn.addEventListener('click', (e) => openShortcutDialog(e.detail === 0));
             if (closeBtn) closeBtn.addEventListener('click', closeShortcutDialog);
             if (dialog) {
                 dialog.addEventListener('click', (e) => {
@@ -2024,7 +2051,7 @@ export const renderHtmlFeed = (
         }
 
         // Desktop keyboard shortcuts (listed in src/shortcuts.ts). Returns true when the key was handled.
-        function handleShortcut(key, shiftKey) {
+        function handleShortcut(key, shiftKey, repeat) {
             if (!isLargeScreen()) return false;
 
             if (isShortcutDialogOpen()) {
@@ -2062,6 +2089,9 @@ export const renderHtmlFeed = (
             if (key === ' ') {
                 if (shiftKey) {
                     pageReader(-1);
+                } else if (repeat) {
+                    // A held Space only scrolls, it never opens the next article
+                    pageReader(1);
                 } else if (!selected) {
                     open(items[0]);
                 } else if (selectedLink !== openLink || !getReaderWindow()) {
@@ -2123,10 +2153,18 @@ export const renderHtmlFeed = (
             return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
         }
 
-        // Enter and Space keep their native meaning on buttons and links (except the cards)
+        // Enter and Space keep their native meaning on buttons (Enter also on links, except the cards),
+        // but only when they were focused with the keyboard: a mouse click focuses buttons as well
         function isActivationTarget(target, key) {
             if (key !== 'Enter' && key !== ' ') return false;
-            return !!(target && target.closest && target.closest('button, [role="button"], a:not(.feed-link)'));
+            if (!target || !target.closest) return false;
+            const control = target.closest(key === ' ' ? 'button, [role="button"]' : 'button, [role="button"], a:not(.feed-link)');
+            if (!control) return false;
+            try {
+                return control.matches(':focus-visible');
+            } catch (err) {
+                return true;
+            }
         }
 
         // Navigations inside the app get a matching view transition
@@ -2175,7 +2213,7 @@ export const renderHtmlFeed = (
             window.addEventListener('keydown', (e) => {
                 if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
                 if (isTypingTarget(e.target) || isActivationTarget(e.target, e.key)) return;
-                if (handleShortcut(e.key, e.shiftKey)) e.preventDefault();
+                if (handleShortcut(e.key, e.shiftKey, e.repeat)) e.preventDefault();
             });
 
             window.addEventListener('message', (e) => {
@@ -2183,7 +2221,7 @@ export const renderHtmlFeed = (
                 if (e.data && e.data.type === 'reader-ready') {
                     revealReader(e.data.url);
                 } else if (e.data && e.data.type === 'reader-keydown') {
-                    handleShortcut(e.data.key, !!e.data.shiftKey);
+                    handleShortcut(e.data.key, !!e.data.shiftKey, !!e.data.repeat);
                 } else if (e.data && e.data.type === 'close-reader') {
                     closeSplitView();
                 }
@@ -2239,6 +2277,11 @@ export const renderHtmlFeed = (
             if (freshFooter && footer) footer.innerHTML = freshFooter.innerHTML;
             document.body.dataset.generated = doc.body.dataset.generated || String(Date.now());
             updateFeedStand();
+            const freshLinks = readFeedLinks(doc);
+            if (freshLinks) {
+                FEED_LINKS = freshLinks;
+                updateUnreadCount();
+            }
         }
 
         function applyFeed(doc, addedLinks) {
