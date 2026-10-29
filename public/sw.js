@@ -1,6 +1,6 @@
 // Service worker: instant launches from cache, offline reading and a fallback page.
 // Bump VERSION whenever the caching strategy or the shell assets change.
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL_CACHE = `tldr-shell-${VERSION}`;
 const PAGE_CACHE = `tldr-pages-${VERSION}`;
 const READER_CACHE = `tldr-reader-${VERSION}`;
@@ -55,7 +55,9 @@ const isCacheable = (response) =>
   response.status === 200 &&
   response.type === "basic" &&
   // Safari refuses redirected responses for navigations
-  !response.redirected;
+  !response.redirected &&
+  // Reader pages that only show the paywall notice are retried next time
+  !response.headers.get("X-Reader-Fallback");
 
 const putInCache = async (cacheName, key, response) => {
   if (!isCacheable(response)) return;

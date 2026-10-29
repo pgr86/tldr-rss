@@ -144,10 +144,16 @@ export default async function handler(
     try {
       const article = await fetchReaderArticle(targetUrl);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.setHeader(
-        "Cache-Control",
-        `public, s-maxage=${ONE_DAY_IN_SECONDS}, stale-while-revalidate=86400`,
-      );
+      if (article.isFallback) {
+        // A failed extraction (paywall, timeout, rate limit) must not stick in any cache
+        res.setHeader("X-Reader-Fallback", "1");
+        res.setHeader("Cache-Control", "no-store");
+      } else {
+        res.setHeader(
+          "Cache-Control",
+          `public, s-maxage=${ONE_DAY_IN_SECONDS}, stale-while-revalidate=86400`,
+        );
+      }
       res
         .status(200)
         .send(renderReaderHtml(article, { summarize: isSummaryEnabled() }));
